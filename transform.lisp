@@ -250,10 +250,14 @@
                `((define-swf-type ,response-type
                     ,@response)))
        (defun ,name (&rest args &key ,@(when paged-slot '(all-pages)) ,@slots)
-         (declare (ignore ,@(when paged-slot '(all-pages)) ,@slots))
+         (declare (ignorable ,@(when paged-slot '(all-pages)) ,@slots))
          (,(if paged-slot 'typed-swf-action-paged 'typed-swf-action)
            ,(keyword-to-camelcase name t)
            ',(intern (camelcase-to-dashed request-type t))
            ',(when response (intern (camelcase-to-dashed response-type t)))
            ,@(when paged-slot (list paged-slot))
-           (loop for (key value) on args by #'cddr collect (cons key value)))))))
+           (append ,(when (member 'domain slots)
+                          '(list (cons :domain (or domain *default-domain*))))
+                   (loop for (key value) on args by #'cddr
+                         unless (eq :domain key)
+                         collect (cons key value))))))))

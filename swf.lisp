@@ -54,7 +54,13 @@ headers, the unparsed result as a string."
 
 
 (define-condition swf-error (error)
-  ((status-code :initarg :status-code
+  ((region      :initarg :region
+                :reader swf-error-region)
+   (action      :initarg :action
+                :reader swf-error-action)
+   (payload     :initarg :payload
+                :reader swf-error-payload)
+   (status-code :initarg :status-code
                 :reader swf-error-status-code)
    (type        :initarg :type
                 :reader swf-error-type)
@@ -63,9 +69,12 @@ headers, the unparsed result as a string."
    (request-id  :initarg :request-id
                 :reader swf-error-request-id))
   (:report (lambda (c stream)
-             (format stream "~A: ~A (Request id ~A)"
+             (format stream "~A: ~A~%Action: ~A~%Region: ~A~@[~%Domain: ~A~]~%Request id: ~A"
                      (swf-error-type c)
                      (swf-error-message c)
+                     (swf-error-action c)
+                     (swf-error-region c)
+                     (cdr (assoc "domain" (cdr (swf-error-payload c)) :test #'equal))
                      (swf-error-request-id c)))))
 
 
@@ -108,6 +117,9 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
                   (condition (or (cdr (assoc type *swf-conditions* :test #'string=))
                                  'swf-error)))
              (error condition
+                    :region region
+                    :action action
+                    :payload payload
                     :status-code status
                     :type type
                     :message (cdr (assoc "message" (cdr result) :test #'string-equal))
@@ -129,8 +141,13 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
 
 
 (defvar *swf-service*)
+(defvar *default-domain* nil)
 
+(defmacro with-service ((&key (domain "default") (region :eu-west-1)) &body body)
+  `(let ((*swf-service* (swf-service (credentials-from-file) ,region))
+         (*default-domain* ,domain))
+     ,@body))
 
-(defmacro with-service (&body body)
-  `(let ((*swf-service* (swf-service (credentials-from-file) :eu-west-1)))
+(defmacro with-domain (domain &body body)
+  `(let ((*default-domain* ,domain))
      ,@body))

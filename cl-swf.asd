@@ -8,4 +8,6 @@
                (:file "swf")
                (:file "transform")
                (:file "types")
-               (:file "actions")))
+               (:file "actions")
+               (:file "error-handling")
+               (:file "workers")))
