@@ -68,7 +68,7 @@
 
 (defun get-event (id)
   (with-slots (history) *wx*
-    (aref history id)))
+    (aref history (1- id))))
 
 
 (defclass task ()

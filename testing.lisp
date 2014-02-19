@@ -8,18 +8,19 @@
 
 (define-workflow hello (greeting)
     (:version :4 :default-child-policy :terminate)
-  (if (find-if (lambda (event)
-                 (eq 'swf::workflow-execution-cancel-requested (aget event :event-type)))
-               (aget task :events))
-      (list (alist :decision-type 'swf::cancel-workflow-execution))
-      (list (alist :decision-type 'swf::record-marker
+  (if (< 10 (count-open-tasks :timer))
+      (list (alist :decision-type :cancel-workflow-execution))
+      (list (alist :decision-type :record-marker
                    :record-marker-decision-attributes (alist :marker-name "test1"))
+            (alist :decision-type :start-timer
+                   :start-timer-decision-attributes (alist :start-to-fire-timeout 1000
+                                                           :timer-id (make-uuid)))
             (say-hello :what "hei"))))
 
 
 (swf::with-service ()
   (hello :greeting "hei"
-         :execution-start-to-close-timeout 60
+         :execution-start-to-close-timeout 600
          :task-start-to-close-timeout 30))
 
 

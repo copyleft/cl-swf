@@ -10,4 +10,6 @@
                (:file "types")
                (:file "actions")
                (:file "error-handling")
+               (:file "util")
+               (:file "history")
                (:file "workers")))
