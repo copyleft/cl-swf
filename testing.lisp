@@ -19,8 +19,8 @@
 
 (swf::with-service ()
   (hello :greeting "hei"
-         :execution-start-to-close-timeout '(:minutes 1)
-         :task-start-to-close-timeout '(:minutes 1)))
+         :execution-start-to-close-timeout 60
+         :task-start-to-close-timeout 30))
 
 
 (swf::with-service ()
@@ -33,6 +33,11 @@
 
 (worker-start-thread *wfw*)
 (worker-start-thread *aw*)
+
+
+;; -----------------------------------------------------------------------------
+
+(setf *auto-carry-on* nil)
 
 
 (worker-look-for-task *wfw*)

@@ -83,35 +83,15 @@
     (check-type data integer)
     (princ-to-string data)))
 
-(defun normalize-timeout (timeout)
-  (decode-timeout (encode-timeout timeout)))
-
-(defun decode-timeout (seconds)
-  (multiple-value-bind (minutes seconds)
-      (truncate seconds 60)
-    (multiple-value-bind (hours minutes)
-        (truncate minutes 60)
-      (multiple-value-bind (days hours)
-          (truncate hours 24)
-        (list :days days :hours hours :minutes minutes :seconds seconds)))))
-
-(defun encode-timeout (timeout)
-  (destructuring-bind (&key (days 0) (hours 0) (minutes 0) (seconds 0))
-      timeout
-    (+ seconds (* 60
-                  (+ minutes (* 60
-                                (+ hours (* 24
-                                            days))))))))
-
 (define-type-transform timeout
   (:from-json
    (if (string= "NONE" data)
        :none
-       (decode-timeout (parse-integer data))))
+       (parse-integer data)))
   (:to-json
    (if (eq :none data)
        "NONE"
-       (princ-to-string (encode-timeout data)))))
+       (princ-to-string data))))
 
 (define-type-transform date-time
   (:from-json
