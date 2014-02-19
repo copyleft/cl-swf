@@ -2,6 +2,12 @@
 
 (declaim (optimize (speed 0) (debug 3) (safety 3) (space 0)))
 
+
+(defun make-uuid ()
+  (with-open-file (in #p"/proc/sys/kernel/random/uuid")
+    (read-line in)))
+
+
 ;;; Helpers for dealing with assoc objects
 
 (defun aget (alist key &rest keys)
@@ -172,7 +178,7 @@
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@activity-args
-                       activity-id
+                       (activity-id (make-uuid))
                        control
                        heartbeat-timeout
                        schedule-to-close-timeout
@@ -248,7 +254,7 @@
 
 (defclass worker ()
   ((service :initarg :service
-            :initform swf::*service*
+            :initform (swf::service)
             :reader worker-service)
    (task-list :initarg :task-list
               :initform "default"
@@ -260,8 +266,7 @@
 
 (defgeneric worker-start (worker)
   (:method ((worker worker))
-    (loop (worker-handle-next-task worker)
-     (break "task handled"))))
+    (loop (worker-handle-next-task worker))))
 
 
 (defgeneric worker-start-thread (worker)
@@ -284,6 +289,7 @@
       (with-simple-restart (carry-on "Stop handle-next-task.")
         (let ((task (worker-look-for-task worker)))
           (when task
+            ;;(break "Handling task ~S" worker)
             (with-simple-restart (carry-on "Stop handling this task.")
               (worker-handle-task worker task))))))))
 

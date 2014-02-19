@@ -6,10 +6,6 @@
   (print what))
 
 
-(say-hello :what "hello")
-
-
-
 (define-workflow hello (greeting)
     ()
   (if (find-if (lambda (event)
@@ -18,7 +14,7 @@
       (list (alist :decision-type 'swf::cancel-workflow-execution))
       (list (alist :decision-type 'swf::record-marker
                    :record-marker-decision-attributes (alist :marker-name "test1"))
-            (say-hello :what "hei" :activity-id (princ-to-string (random 10000))))))
+            (say-hello :what "hei"))))
 
 
 (swf::with-service ()
@@ -31,22 +27,23 @@
   (ensure-activity-types *package*))
 
 
-(swf::with-service ()
-  (defparameter *wfw* (make-instance 'workflow-worker)))
+(defparameter *wfw* (make-instance 'workflow-worker))
+(defparameter *aw* (make-instance 'activity-worker))
+
+(worker-start-thread *wfw*)
+(worker-start-thread *aw*)
+
 
 (worker-look-for-task *wfw*)
 (worker-compute-task-response *wfw* *wtask*)
 (worker-handle-task *wfw* *wtask*)
-
 (worker-handle-next-task *wfw*)
-
-
-(swf::with-service ()
-  (defparameter *aw* (make-instance 'activity-worker)))
 
 (worker-look-for-task *aw*)
 (worker-compute-task-response *aw* *atask*)
 (worker-handle-task *aw* *atask*)
+(worker-handle-next-task *aw*)
+
 
 (swf::with-service ()
   (swf::signal-workflow-execution :workflow-id "2k0"
