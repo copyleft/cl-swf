@@ -127,6 +127,10 @@
   (:from-json (json-to-keyword data))
   (:to-json (keyword-to-json data)))
 
+(define-type-transform camel-case-member
+  (:from-json (camelcase-to-keyword data t))
+  (:to-json (keyword-to-camelcase data t)))
+
 (define-type-transform array-of
   (:from-json
    (loop for value in (cdr data)
@@ -183,7 +187,9 @@
        (- (length string) (length suffix))))
 
 (defun type-for-slot (slot-name type-def valid-values)
-  (cond (valid-values
+  (cond ((some (lambda (s) (some #'lower-case-p s)) valid-values)
+         `(camel-case-member ,@(mapcar (lambda (v) (camelcase-to-keyword v t)) valid-values)))
+        (valid-values
          `(member ,@(mapcar #'json-to-keyword valid-values)))
         ((ends-with "Timeout" slot-name)
          'timeout)

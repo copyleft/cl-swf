@@ -185,7 +185,7 @@
                        schedule-to-start-timeout
                        start-to-close-timeout
                        task-list)
-         (alist :decision-type 'swf::schedule-activity-task
+         (alist :decision-type :schedule-activity-task
                 :schedule-activity-task-decision-attributes
                 (alist :activity-id activity-id
                        :activity-type (alist :name ,string-name :version ,string-version)
