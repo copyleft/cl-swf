@@ -1,5 +1,9 @@
 (in-package #:swf)
 
+
+(declaim (optimize (speed 0) (debug 3) (safety 3) (space 0)))
+
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
   (defun dashed-to-camelcase (string &optional init-cap-p)

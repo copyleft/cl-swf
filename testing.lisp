@@ -1,5 +1,15 @@
 (in-package #:swf-workers)
 
+
+(define-activity say-hello (what)
+    ()
+  (print what))
+
+
+(say-hello :what "hello")
+
+
+
 (define-workflow hello (greeting)
     ()
   (if (find-if (lambda (event)
@@ -7,13 +17,18 @@
                (aget task :events))
       (list (alist :decision-type 'swf::cancel-workflow-execution))
       (list (alist :decision-type 'swf::record-marker
-                   :record-marker-decision-attributes (alist :marker-name "test1")))))
+                   :record-marker-decision-attributes (alist :marker-name "test1"))
+            (say-hello :what "hei" :activity-id (princ-to-string (random 10000))))))
 
 
 (swf::with-service ()
   (hello :greeting "hei"
          :task-start-to-close-timeout '(:minutes 1)))
 
+
+(swf::with-service ()
+  (ensure-workflow-types *package*)
+  (ensure-activity-types *package*))
 
 
 (swf::with-service ()
@@ -25,6 +40,13 @@
 
 (worker-handle-next-task *wfw*)
 
+
+(swf::with-service ()
+  (defparameter *aw* (make-instance 'activity-worker)))
+
+(worker-look-for-task *aw*)
+(worker-compute-task-response *aw* *atask*)
+(worker-handle-task *aw* *atask*)
 
 (swf::with-service ()
   (swf::signal-workflow-execution :workflow-id "2k0"
@@ -162,3 +184,14 @@
      (:RUN-ID . "12ChrohesRJisovBMwZZFCMtVCk5toQkH9hoZGai+zil8=")
      (:WORKFLOW-ID . "1d7o"))
     (:WORKFLOW-TYPE (:NAME . "HELLO") (:VERSION . "1"))))
+
+
+(defparameter *atask*
+  '((:ACTIVITY-ID . "9571")
+    (:ACTIVITY-TYPE (:NAME . "SAY-HELLO") (:VERSION . "1"))
+    (:INPUT . "(:WHAT \"hei\")") (:STARTED-EVENT-ID . 7)
+    (:TASK-TOKEN
+     . "AAAAKgAAAAEAAAAAAAAAA1BeAmLVKD7Ad9iRXTg6eKnE+INLFq24VUBlbnj64eVH40FJ9+bCiN67b6zlefvkRLAy8SCwei9+3d5o3/DUfyBacFe/6n9XGsDyQFl4RoiTFNLExSAZVbAsc5OVeltf1RQC4RJbM6ZNM2gYjPNlj94OM/3sHw5MtqVpDEevsikQWsc1MoMKqMthxFRmbZsRmhtCCSIQNdBC8Y2aoOpuvLO/feyPjDP9QW/wEcrUmT7/9QPtwse3HKXNZfY90s2uborFXFWMcyE+Q1m66ahAWAQ=")
+    (:WORKFLOW-EXECUTION
+     (:RUN-ID . "12pPfc/fIIJswf45L1H7nzN+8fLMBcLZ3Ef67zjD40kJ0=")
+     (:WORKFLOW-ID . "tg1"))))

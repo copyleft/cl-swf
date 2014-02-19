@@ -50,7 +50,7 @@
                               (&key (version :1)
                                     default-child-policy
                                     default-execution-start-to-close-timeout
-                                    (default-task-list :default)
+                                    (default-task-list (alist :name "default"))
                                     (default-task-start-to-close-timeout :none)
                                     description)
                            &body body)
@@ -77,13 +77,15 @@
        (setf (get ',name 'workflow)
              (alist :name ,string-name
                     :version ,string-version
-                    :default-child-policy ,default-child-policy
-                    :default-execution-start-to-close-timeout ,default-execution-start-to-close-timeout
-                    :default-task-list ,default-task-list
-                    :default-task-start-to-close-timeout ,default-task-start-to-close-timeout
-                    :description ,description
                     :decider (lambda (task)
-                               ,@body))))))
+                               ,@body)
+                    :options (list :name ,string-name
+                                   :version ,string-version
+                                   :default-child-policy ,default-child-policy
+                                   :default-execution-start-to-close-timeout ,default-execution-start-to-close-timeout
+                                   :default-task-list ',default-task-list
+                                   :default-task-start-to-close-timeout ,default-task-start-to-close-timeout
+                                   :description ,description))))))
 
 
 (defun %start-workflow (&key child-policy
@@ -134,6 +136,110 @@
                         packages)))
     (or workflow
         (error "Could not find workflow ~A/~A in ~S" name version packages))))
+
+
+(defun ensure-workflow-type (workflow)
+  (handler-case
+      (apply #'swf::register-workflow-type (aget workflow :options))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+
+(defun ensure-workflow-types (&rest packages)
+  (dolist (package packages)
+    (do-symbols (symbol package)
+      (let ((workflow (get symbol 'workflow)))
+        (when workflow
+          (ensure-workflow-type workflow))))))
+
+
+
+;;; Defining activitys ----------------------------------------------------------------------------
+
+
+(defmacro define-activity (name
+                           (&rest activity-args)
+                              (&key (version :1)
+                                    (default-task-heartbeat-timeout :none)
+                                    (default-task-list (alist :name "default"))
+                                    (default-task-schedule-to-close-timeout :none)
+                                    (default-task-schedule-to-start-timeout :none)
+                                    (default-task-start-to-close-timeout :none)
+                                    description)
+                           &body body)
+  (let ((string-name (string name))
+        (string-version (string version)))
+    `(progn
+       (defun ,name (&key ,@activity-args
+                       activity-id
+                       control
+                       heartbeat-timeout
+                       schedule-to-close-timeout
+                       schedule-to-start-timeout
+                       start-to-close-timeout
+                       task-list)
+         (alist :decision-type 'swf::schedule-activity-task
+                :schedule-activity-task-decision-attributes
+                (alist :activity-id activity-id
+                       :activity-type (alist :name ,string-name :version ,string-version)
+                       :control control
+                       :heartbeat-timeout heartbeat-timeout
+                       :input (serialize-object
+                               (list ,@(loop for arg in activity-args
+                                             collect (intern (symbol-name arg) :keyword)
+                                             collect arg)))
+                       :schedule-to-close-timeout schedule-to-close-timeout
+                       :schedule-to-start-timeout schedule-to-start-timeout
+                       :start-to-close-timeout start-to-close-timeout
+                       :task-list task-list)))
+       (setf (get ',name 'activity)
+             (alist :name ,string-name
+                    :version ,string-version
+                    :function (lambda (&key ,@activity-args)
+                                ,@body)
+                    :options (list :name ,string-name
+                                   :version ,string-version
+                                   :default-task-heartbeat-timeout ,default-task-heartbeat-timeout
+                                   :default-task-list ',default-task-list
+                                   :default-task-schedule-to-close-timeout ,default-task-schedule-to-close-timeout
+                                   :default-task-schedule-to-start-timeout ,default-task-schedule-to-start-timeout
+                                   :default-task-start-to-close-timeout ,default-task-start-to-close-timeout
+                                   :description ,description))))))
+
+
+(defun find-activity-in-package (package name version)
+  (let ((symbol (find-symbol name package)))
+    (when symbol
+      (let ((activity (get symbol 'activity)))
+        (when activity
+          (when (and (equal name (aget activity :name))
+                     (equal version (aget activity :version)))
+            activity))))))
+
+
+(defun find-activity (packages name version)
+  (let ((activity (some (lambda (package)
+                          (find-activity-in-package package name version))
+                        packages)))
+    (or activity
+        (error "Could not find activity ~A/~A in ~S" name version packages))))
+
+
+(defun ensure-activity-type (activity)
+  (handler-case
+      (apply #'swf::register-activity-type (aget activity :options))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+
+(defun ensure-activity-types (&rest packages)
+  (dolist (package packages)
+    (do-symbols (symbol package)
+      (let ((activity (get symbol 'activity)))
+        (when activity
+          (ensure-activity-type activity))))))
 
 
 
@@ -234,3 +340,50 @@
                                   (aget workflow-type :version)))
          (decider-function (aget workflow :decider)))
     (funcall decider-function task)))
+
+
+;;; Activity worker --------------------------------------------------------------------------------
+
+
+(defclass activity-worker (worker)
+  ())
+
+
+(defmethod worker-look-for-task ((aw activity-worker))
+  (let ((res (swf::poll-for-activity-task :identity (princ-to-string sb-thread:*current-thread*)
+                                          :task-list (alist :name (worker-task-list aw)))))
+    (when (aget res :task-token)
+      res)))
+
+
+(defmethod worker-compute-task-response ((aw activity-worker) task)
+  (restart-case
+      (let ((values (compute-activity-task-values aw task)))
+        (list #'swf::respond-activity-task-completed
+              :result (serialize-object values)
+              :task-token (aget task :task-token)))
+    (carry-on ()
+      :report "Fail activity task"
+      (list #'swf::respond-activity-task-failed
+            :task-token (aget task :task-token)
+            :reason "wrong" ;; TODO return condition object somehow
+            :details "something wrong"))))
+
+
+(defun read-new-values ()
+  (format t "Enter a new value: ")
+  (multiple-value-list (eval (read))))
+
+
+(defun compute-activity-task-values (aw task)
+  (restart-case
+      (let* ((activity-type (aget task :activity-type))
+             (activity (find-activity (worker-packages aw)
+                                     (aget activity-type :name)
+                                     (aget activity-type :version)))
+            (input (deserialize-object (aget task :input))))
+        (multiple-value-list (apply (aget activity :function) input)))
+    (use-value (&rest new-values)
+      :report "Return something else."
+      :interactive read-new-values
+      new-values)))
