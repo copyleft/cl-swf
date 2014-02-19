@@ -7,7 +7,7 @@
 
 
 (define-workflow hello (greeting)
-    ()
+    (:version :4 :default-child-policy :terminate)
   (if (find-if (lambda (event)
                  (eq 'swf::workflow-execution-cancel-requested (aget event :event-type)))
                (aget task :events))
@@ -19,6 +19,7 @@
 
 (swf::with-service ()
   (hello :greeting "hei"
+         :execution-start-to-close-timeout '(:minutes 1)
          :task-start-to-close-timeout '(:minutes 1)))
 
 

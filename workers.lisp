@@ -57,7 +57,7 @@
                                     default-child-policy
                                     default-execution-start-to-close-timeout
                                     (default-task-list (alist :name "default"))
-                                    (default-task-start-to-close-timeout :none)
+                                    default-task-start-to-close-timeout
                                     description)
                            &body body)
   (let ((string-name (string name))
@@ -353,6 +353,8 @@
 
 (defclass activity-worker (worker)
   ())
+
+;; TODO: Check for duplicate activities in initialize-instance :after
 
 
 (defmethod worker-look-for-task ((aw activity-worker))
