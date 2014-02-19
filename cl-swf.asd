@@ -12,4 +12,5 @@
                (:file "error-handling")
                (:file "util")
                (:file "history")
+               (:file "decisions")
                (:file "workers")))

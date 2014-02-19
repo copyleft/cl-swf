@@ -131,27 +131,24 @@
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@activity-args
-                       (activity-id (make-uuid))
+                       activity-id
                        control
                        heartbeat-timeout
                        schedule-to-close-timeout
                        schedule-to-start-timeout
                        start-to-close-timeout
                        task-list)
-         (alist :decision-type :schedule-activity-task
-                :schedule-activity-task-decision-attributes
-                (alist :activity-id activity-id
-                       :activity-type (alist :name ,string-name :version ,string-version)
-                       :control control
-                       :heartbeat-timeout heartbeat-timeout
-                       :input (serialize-object
-                               (list ,@(loop for arg in activity-args
-                                             collect (intern (symbol-name arg) :keyword)
-                                             collect arg)))
-                       :schedule-to-close-timeout schedule-to-close-timeout
-                       :schedule-to-start-timeout schedule-to-start-timeout
-                       :start-to-close-timeout start-to-close-timeout
-                       :task-list task-list)))
+         (schedule-activity-task :activity-id activity-id
+                                 :activity-type (alist :name ,string-name :version ,string-version)
+                                 :control control
+                                 :heartbeat-timeout heartbeat-timeout
+                                 :input (list ,@(loop for arg in activity-args
+                                                      collect (intern (symbol-name arg) :keyword)
+                                                      collect arg))
+                                 :schedule-to-close-timeout schedule-to-close-timeout
+                                 :schedule-to-start-timeout schedule-to-start-timeout
+                                 :start-to-close-timeout start-to-close-timeout
+                                 :task-list task-list))
        (setf (get ',name 'activity)
              (alist :name ,string-name
                     :version ,string-version
@@ -298,8 +295,10 @@
                                   (aget workflow-type :name)
                                   (aget workflow-type :version)))
          (decider-function (aget workflow :decider)))
-    (let ((*wx* (make-workflow-execution-info (aget task :events))))
-      (funcall decider-function))))
+    (let ((*wx* (make-workflow-execution-info (aget task :events)))
+          (*decisions* nil))
+      (funcall decider-function)
+      (nreverse *decisions*))))
 
 
 ;;; Activity worker --------------------------------------------------------------------------------
