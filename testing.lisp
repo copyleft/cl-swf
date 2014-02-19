@@ -31,13 +31,23 @@
                                   :signal-name "13"))
 
 (swf::with-service ()
-  (swf::request-cancel-workflow-execution :workflow-id "2k0"))
+  (swf::request-cancel-workflow-execution :workflow-id "110c"))
 
 
 (swf::with-service ()
   (swf::list-open-workflow-executions :all-pages t
                                       :execution-filter (alist :workflow-id "1d7o")
                                       :start-time-filter (alist :oldest-date (local-time:parse-timestring "2000-01-01"))))
+
+
+(swf::with-service ()
+  (swf::list-domains :registration-status :registered))
+
+(swf::with-service ()
+  (swf::list-workflow-types :registration-status :registered))
+
+(swf::with-service ()
+  (swf::list-workflow-types :registration-status :registered))
 
 (local-time:enable-read-macros)
 

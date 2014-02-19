@@ -101,13 +101,14 @@ headers, the unparsed result as a string."
   workflow-execution-already-started-error)
 
 
-(defun swf-request (credentials region action payload)
+(defun swf-request (service action payload)
   "Executes an swf action. Region is a string designator for an aws
 region. Action is a string. Payload is a JSON object. Returns four the
 result JSON object or NIL. Might signal an error of subtype swf-error."
+  (assert service () "No swf service given")
   (multiple-value-bind (result status headers)
-      (let ((*aws-credentials* credentials))
-        (swf-request* region action payload))
+      (let ((*aws-credentials* (getf service :credentials)))
+        (swf-request* (getf service :region) action payload))
     (cond ((eql status 200)
            result)
           (t
@@ -117,7 +118,7 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
                   (condition (or (cdr (assoc type *swf-conditions* :test #'string=))
                                  'swf-error)))
              (error condition
-                    :region region
+                    :region (getf service :region)
                     :action action
                     :payload payload
                     :status-code status
@@ -135,19 +136,18 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
       (values access-key secret))))
 
 
-(defun swf-service (credentials region)
-  (lambda (action payload)
-    (swf-request credentials region action payload)))
+
+(defvar *service*)
 
 
-(defvar *swf-service*)
-(defvar *default-domain* nil)
+(defun service (&key region credentials domain)
+  (list :region (or region :eu-west-1)
+        :credentials (or credentials (credentials-from-file))
+        :domain (or domain "default")))
 
-(defmacro with-service ((&key (domain "default") (region :eu-west-1)) &body body)
-  `(let ((*swf-service* (swf-service (credentials-from-file) ,region))
-         (*default-domain* ,domain))
-     ,@body))
 
-(defmacro with-domain (domain &body body)
-  `(let ((*default-domain* ,domain))
+(defmacro with-service ((&key region credentials domain) &body body)
+  `(let ((*service* (service :region ,region
+                             :credentials ,credentials
+                             :domain ,domain)))
      ,@body))

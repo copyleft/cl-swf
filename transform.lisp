@@ -206,21 +206,21 @@
                         ,(getf slot-def :required)))))
 
 
-(defun typed-swf-action (action request-type response-type data)
+(defun typed-swf-action (service action request-type response-type data)
   (let* ((payload (swf-to-json request-type data))
-         (response (funcall *swf-service* action payload)))
+         (response (swf-request service action payload)))
     (when response-type
       (json-to-swf response-type response))))
 
 
-(defun typed-swf-action-paged (action request-type response-type paged-slot payload)
+(defun typed-swf-action-paged (service action request-type response-type paged-slot payload)
   (let* ((all-pages (cdr (assoc :all-pages payload)))
          (payload* (remove :all-pages payload :key #'car))
-         (result (typed-swf-action action request-type response-type payload*)))
+         (result (typed-swf-action service action request-type response-type payload*)))
     (when result
       (cond (all-pages
              (let ((pages (loop for page = result then (typed-swf-action
-                                                        action request-type response-type
+                                                        service action request-type response-type
                                                         (acons :next-page-token next-page-token
                                                                payload*))
                                 for next-page-token = (cdr (assoc :next-page-token page))
@@ -249,15 +249,16 @@
        ,@(when response
                `((define-swf-type ,response-type
                     ,@response)))
-       (defun ,name (&rest args &key ,@(when paged-slot '(all-pages)) ,@slots)
+       (defun ,name (&rest args &key (service *service*) ,@(when paged-slot '(all-pages)) ,@slots)
          (declare (ignorable ,@(when paged-slot '(all-pages)) ,@slots))
          (,(if paged-slot 'typed-swf-action-paged 'typed-swf-action)
+           service
            ,(keyword-to-camelcase name t)
            ',(intern (camelcase-to-dashed request-type t))
            ',(when response (intern (camelcase-to-dashed response-type t)))
            ,@(when paged-slot (list paged-slot))
            (append ,(when (member 'domain slots)
-                          '(list (cons :domain (or domain *default-domain*))))
+                          '(list (cons :domain (or domain (getf service :domain)))))
                    (loop for (key value) on args by #'cddr
                          unless (eq :domain key)
                          collect (cons key value))))))))

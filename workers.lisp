@@ -142,11 +142,8 @@
 
 (defclass worker ()
   ((service :initarg :service
-            :initform swf::*swf-service*
+            :initform swf::*service*
             :reader worker-service)
-   (domain :initarg :domain
-           :initform swf::*default-domain*
-           :reader worker-domain)
    (task-list :initarg :task-list
               :initform "default"
               :reader worker-task-list)
@@ -157,7 +154,7 @@
 
 (defgeneric worker-start (worker)
   (:method ((worker worker))
-    (loop (handle-next-task worker)
+    (loop (worker-handle-next-task worker)
      (break "task handled"))))
 
 
@@ -171,8 +168,7 @@
 
 (defgeneric worker-look-for-task (worker))
 (defmethod worker-look-for-task :around (worker)
-  (let ((swf::*swf-service* (worker-service worker))
-        (swf::*default-domain* (worker-domain worker)))
+  (let ((swf::*service* (worker-service worker)))
     (call-next-method)))
 
 
@@ -188,22 +184,20 @@
 
 (defgeneric worker-handle-task (worker task)
   (:method ((worker worker) task)
-    (restart-case
-        (let ((swf::*swf-service* (worker-service worker))
-              (swf::*default-domain* (worker-domain worker)))
+    (let ((swf::*service* (worker-service worker)))
+      (restart-case
           (destructuring-bind (function &rest args)
               (worker-compute-task-response worker task)
-            (apply function args)))
-      (retry ()
-        :report "Retry handle task"
-        (worker-handle-task worker task))
-      (terminate-workflow ()
-        :report "Terminate this workflow exectuion and all child workflows."
-        (swf::terminate-workflow-execution :domain (slot-value worker 'domain)
-                                           :child-policy :terminate
-                                           :details "Terminated by restart."
-                                           :run-id (aget task :workflow-execution :run-id)
-                                           :workflow-id (aget task :workflow-execution :workflow-id))))))
+            (apply function args))
+        (retry ()
+          :report "Retry handle task"
+          (worker-handle-task worker task))
+        (terminate-workflow ()
+          :report "Terminate this workflow exectuion and all child workflows."
+          (swf::terminate-workflow-execution :child-policy :terminate
+                                             :details "Terminated by restart."
+                                             :run-id (aget task :workflow-execution :run-id)
+                                             :workflow-id (aget task :workflow-execution :workflow-id)))))))
 
 
 (defgeneric worker-compute-task-response (worker task))
@@ -221,7 +215,6 @@
 
 (defmethod worker-look-for-task ((wfw workflow-worker))
   (let ((res (swf::poll-for-decision-task :all-pages t
-                                          :domain (worker-domain wfw)
                                           :identity (princ-to-string sb-thread:*current-thread*)
                                           :task-list (alist :name (worker-task-list wfw)))))
     (when (aget res :events)
