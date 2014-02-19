@@ -222,7 +222,8 @@
                                 for next-page-token = (cdr (assoc :next-page-token page))
                                 collect (cdr (assoc paged-slot page))
                                 while next-page-token)))
-               (setf (cdr (assoc paged-slot result)) (apply #'append pages))
+               (when (assoc paged-slot result)
+                 (setf (cdr (assoc paged-slot result)) (apply #'append pages)))
                result))
             (t result)))))
 
