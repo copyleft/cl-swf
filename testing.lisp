@@ -73,6 +73,13 @@
 
 (swf::swf-to-json 'swf::poll-for-decision-task-response *wtask*)
 
+(swf::json-to-swf 'swf::register-workflow-type-request
+                  (swf::swf-to-json 'swf::register-workflow-type-request
+                                    '((:domain . "hei")
+                                      (:name . "name")
+                                      (:version . "version")
+                                      (:default-task-list . "foo")
+                                      (:default-task-list . ((:name . "foo"))))))
 
 (local-time:enable-read-macros)
 (defparameter *wtask*

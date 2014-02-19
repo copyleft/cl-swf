@@ -56,7 +56,7 @@
                               (&key (version :1)
                                     default-child-policy
                                     default-execution-start-to-close-timeout
-                                    (default-task-list (alist :name "default"))
+                                    (default-task-list "default")
                                     default-task-start-to-close-timeout
                                     description)
                            &body body)
@@ -89,19 +89,19 @@
                                    :version ,string-version
                                    :default-child-policy ,default-child-policy
                                    :default-execution-start-to-close-timeout ,default-execution-start-to-close-timeout
-                                   :default-task-list ',default-task-list
+                                   :default-task-list ,default-task-list
                                    :default-task-start-to-close-timeout ,default-task-start-to-close-timeout
                                    :description ,description))))))
 
 
 (defun %start-workflow (&key child-policy
-                        execution-start-to-close-timeout
-                        input
-                        tag-list
-                        task-list
-                        task-start-to-close-timeout
-                        workflow-id
-                        workflow-type)
+                          execution-start-to-close-timeout
+                          input
+                          tag-list
+                          task-list
+                          task-start-to-close-timeout
+                          workflow-id
+                          workflow-type)
   (loop with input-string = (serialize-object input)
         for id-bits from 16 by 8
         for id = (or workflow-id
@@ -110,17 +110,15 @@
         (handler-case
             (return
               (alist :workflow-id id
-                     :run-id (aget
-                              (swf::start-workflow-execution
-                               :child-policy child-policy
-                               :execution-start-to-close-timeout execution-start-to-close-timeout
-                               :input input-string
-                               :tag-list tag-list
-                               :task-list task-list
-                               :task-start-to-close-timeout task-start-to-close-timeout
-                               :workflow-id id
-                               :workflow-type workflow-type)
-                              :run-id)))
+                     :run-id (swf::start-workflow-execution
+                              :child-policy child-policy
+                              :execution-start-to-close-timeout execution-start-to-close-timeout
+                              :input input-string
+                              :tag-list tag-list
+                              :task-list task-list
+                              :task-start-to-close-timeout task-start-to-close-timeout
+                              :workflow-id id
+                              :workflow-type workflow-type)))
           (swf::workflow-execution-already-started-error (err)
             (when workflow-id
               (error err))))))
@@ -168,7 +166,7 @@
                            (&rest activity-args)
                               (&key (version :1)
                                     (default-task-heartbeat-timeout :none)
-                                    (default-task-list (alist :name "default"))
+                                    (default-task-list "default")
                                     (default-task-schedule-to-close-timeout :none)
                                     (default-task-schedule-to-start-timeout :none)
                                     (default-task-start-to-close-timeout :none)
@@ -328,7 +326,7 @@
 (defmethod worker-look-for-task ((wfw workflow-worker))
   (let ((res (swf::poll-for-decision-task :all-pages t
                                           :identity (princ-to-string sb-thread:*current-thread*)
-                                          :task-list (alist :name (worker-task-list wfw)))))
+                                          :task-list (worker-task-list wfw))))
     (when (aget res :events)
       res)))
 
@@ -359,7 +357,7 @@
 
 (defmethod worker-look-for-task ((aw activity-worker))
   (let ((res (swf::poll-for-activity-task :identity (princ-to-string sb-thread:*current-thread*)
-                                          :task-list (alist :name (worker-task-list aw)))))
+                                          :task-list (worker-task-list aw))))
     (when (aget res :task-token)
       res)))
 

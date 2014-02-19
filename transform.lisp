@@ -141,12 +141,18 @@
 
 (define-type-transform object
   (:from-json
-   (loop for (key . value) in (cdr data)
-         for slot-name = (camelcase-to-keyword key)
-         for slot-type = (second (assoc slot-name type-def))
-         do (assert slot-type () "SWF type ~S do not have slot ~S." type slot-name)
-         collect (cons slot-name (json-to-swf slot-type value))))
+   (let ((obj (loop for (key . value) in (cdr data)
+                    for slot-name = (camelcase-to-keyword key)
+                    for slot-type = (second (assoc slot-name type-def))
+                    do (assert slot-type () "SWF type ~S do not have slot ~S." type slot-name)
+                    collect (cons slot-name (json-to-swf slot-type value)))))
+     (if (= 1 (length type-def))
+         (cdar obj)
+         obj)))
   (:to-json
+   (when (and (= 1 (length type-def))
+              (not (consp data)))
+     (setf data (list (cons (caar type-def) data))))
    (loop for (slot-name nil required) in type-def
          when required
          do (assert (assoc slot-name data) () ;; FIXME: doesn't work when slot is NIL
