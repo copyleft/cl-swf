@@ -86,6 +86,9 @@
                                       (:default-task-list . "foo")
                                       (:default-task-list . ((:name . "foo"))))))
 
+(make-workflow-execution-info (aget *wtask* :events))
+
+
 (local-time:enable-read-macros)
 (defparameter *wtask*
   '((:EVENTS
