@@ -15,7 +15,8 @@
                                     default-task-start-to-close-timeout
                                     description)
                            &body body)
-  (let ((string-name (string name))
+  (let ((decider-function (intern (format nil "%%~A" name)))
+        (string-name (string name))
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@workflow-args
@@ -35,11 +36,12 @@
                           :task-start-to-close-timeout task-start-to-close-timeout
                           :workflow-id workflow-id
                           :workflow-type (alist :name ,string-name :version ,string-version)))
+       (defun ,decider-function (&key ,@workflow-args)
+                          ,@body)
        (setf (get ',name 'workflow)
              (alist :name ,string-name
                     :version ,string-version
-                    :decider (lambda ()
-                               ,@body)
+                    :decider #',decider-function
                     :options (list :name ,string-name
                                    :version ,string-version
                                    :default-child-policy ,default-child-policy
@@ -127,7 +129,8 @@
                                     (default-task-start-to-close-timeout :none)
                                     description)
                            &body body)
-  (let ((string-name (string name))
+  (let ((activity-function (intern (format nil "%%~A" name)))
+        (string-name (string name))
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@activity-args
@@ -149,11 +152,12 @@
                                  :schedule-to-start-timeout schedule-to-start-timeout
                                  :start-to-close-timeout start-to-close-timeout
                                  :task-list task-list))
+       (defun ,activity-function (&key ,@activity-args)
+         ,@body)
        (setf (get ',name 'activity)
              (alist :name ,string-name
                     :version ,string-version
-                    :function (lambda (&key ,@activity-args)
-                                ,@body)
+                    :function #',activity-function
                     :options (list :name ,string-name
                                    :version ,string-version
                                    :default-task-heartbeat-timeout ,default-task-heartbeat-timeout
@@ -297,7 +301,7 @@
          (decider-function (aget workflow :decider)))
     (let ((*wx* (make-workflow-execution-info (aget task :events)))
           (*decisions* nil))
-      (funcall decider-function)
+      (apply decider-function (deserialize-object (event-input (get-event (task-scheduled-event-id (get-task :workflow))))))
       (nreverse *decisions*))))
 
 
