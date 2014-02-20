@@ -26,6 +26,8 @@
 
 (defvar *wx*)
 
+(defvar *current-event-id*)
+
 (defclass workflow-execution-info ()
   (;(run-id :initarg :run-id)
    ;(workflow-id :initarg :workflow-id)
@@ -61,11 +63,6 @@
     *wx*))
 
 
-(defun last-event-id ()
-  (with-slots (history) *wx*
-    (1- (length history))))
-
-
 (defun get-event (id)
   (with-slots (history) *wx*
     (aref history (1- id))))
@@ -99,22 +96,22 @@
 (defun %schedule-task (type &optional id)
   (let ((tasks (get-tasks type)))
     (assert (null (gethash id tasks)) () "Program error: duplicate task id ~S ~S" type id)
-    (let ((task (make-instance 'task :scheduled-event-id (last-event-id))))
+    (let ((task (make-instance 'task :scheduled-event-id *current-event-id*)))
       (setf (gethash id tasks) task)
       task)))
 
 (defun %start-task (type &optional id)
   (when (eql type :decision)
-    (setf (slot-value *wx* 'previous-started-event-id) (last-event-id)))
+    (setf (slot-value *wx* 'previous-started-event-id) *current-event-id*))
   (let ((task (gethash id (get-tasks type))))
     (assert task () "Program error: unknown task id ~S ~S" type id)
-    (setf (slot-value task 'started-event-id) (last-event-id))
+    (setf (slot-value task 'started-event-id) *current-event-id*)
     task))
 
 (defun %close-task (type &optional id)
   (let ((task (gethash id (get-tasks type))))
     (assert task () "Program error: unknown task id ~S ~S" type id)
-    (setf (slot-value task 'closed-event-id) (last-event-id))
+    (setf (slot-value task 'closed-event-id) *current-event-id*)
     task))
 
 (defun %request-cancel-task (type &optional id)
@@ -122,7 +119,7 @@
     (setf (slot-value *wx* 'cancel-requested) t))
   (let ((task (gethash id (get-tasks type))))
     (assert task () "Program error: unknown task id ~S ~S" type id)
-    (push (last-event-id) (slot-value task 'request-cancel-event-ids))
+    (push *current-event-id* (slot-value task 'request-cancel-event-ids))
     task))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -149,7 +146,8 @@
        (defmethod update-history-with-event ((event ,name))
          (with-slots (id ,@(mapcar #'car slots))
              event
-           ,@body)))))
+           (let ((*current-event-id* id))
+             ,@body))))))
 
 
 (deftype event-id () '(integer 0 99999999))
