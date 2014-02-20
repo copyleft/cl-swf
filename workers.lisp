@@ -322,17 +322,19 @@
 
 
 (defmethod worker-compute-task-response ((aw activity-worker) task)
-  (restart-case
-      (let ((values (compute-activity-task-values aw task)))
-        (list #'swf::respond-activity-task-completed
-              :result (serialize-object values)
-              :task-token (aget task :task-token)))
-    (carry-on ()
-      :report "Fail activity task"
-      (list #'swf::respond-activity-task-failed
-            :task-token (aget task :task-token)
-            :reason "wrong" ;; TODO return condition object somehow
-            :details "something wrong"))))
+  (let ((error))
+    (restart-case
+        (handler-bind ((error (lambda (e) (setf error e))))
+          (let ((values (compute-activity-task-values aw task)))
+            (list #'swf::respond-activity-task-completed
+                  :result (serialize-object values)
+                  :task-token (aget task :task-token))))
+      (carry-on ()
+        :report "Fail activity task"
+        (list #'swf::respond-activity-task-failed
+              :task-token (aget task :task-token)
+              :reason (format nil "~A" error) ;; TODO return condition object somehow
+              :details "something wrong")))))
 
 
 (defun read-new-values ()
