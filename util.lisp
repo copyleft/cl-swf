@@ -7,23 +7,49 @@
 
 
 ;;; Serialization ---------------------------------------------------------------------------------
+;;;
+;;; Serialization is limited to numbers, strings, T, NIL, keyword symbols, conses / lists
+;;; and local-time:timestamp.
+;;;
+
+(defpackage #:%swf-serialization
+  (:import-from :common-lisp #:t #:nil))
 
 
-(defpackage #:%amazon-flow-serialization)
+(defvar *swf-serialization-readtable*
+  (let ((*readtable* (copy-readtable nil)))
+    (local-time:enable-read-macros)
+    *readtable*))
+
+
+(defun serializable-p (object &optional (cons-cache (make-hash-table)))
+  (typecase object
+    (cons
+     (prog1 (and (not (gethash object cons-cache))
+                 (serializable-p (car object) cons-cache)
+                 (serializable-p (cdr object) cons-cache))
+       (setf (gethash object cons-cache) t)))
+    (real t)
+    (keyword t)
+    (string t)
+    ((member t nil) t)
+    (local-time:timestamp t)))
 
 
 (defun serialize-object (object)
   (when object
+    (assert (serializable-p object) () "~S is not serializable" object)
     (with-standard-io-syntax
-      (let ((*package* (find-package :%amazon-flow-serialization))
-            (*print-circle* t))
+      (let ((*package* (find-package :%swf-serialization))
+            (*readtable* *swf-serialization-readtable*))
         (prin1-to-string object)))))
 
 
 (defun deserialize-object (string)
   (when string
     (with-standard-io-syntax
-      (let ((*package* (find-package :%amazon-flow-serialization)))
+      (let ((*package* (find-package :%swf-serialization))
+            (*readtable* *swf-serialization-readtable*))
         (read-from-string string)))))
 
 
