@@ -4,13 +4,20 @@
                :json-streams
                :aws-sign4)
   :serial t
-  :components ((:file "packages")
-               (:file "swf")
-               (:file "transform")
-               (:file "types")
-               (:file "actions")
-               (:file "error-handling")
-               (:file "util")
-               (:file "history")
-               (:file "decisions")
-               (:file "workers")))
+  :components ((:module "client"
+                :serial t
+                :components
+                ((:file "packages")
+                 (:file "swf")
+                 (:file "transform")
+                 (:file "types")
+                 (:file "actions")))
+               (:module "workers"
+                :serial t
+                :components
+                ((:file "packages")
+                  (:file "error-handling")
+                  (:file "util")
+                  (:file "history")
+                  (:file "decisions")
+                  (:file "workers")))))

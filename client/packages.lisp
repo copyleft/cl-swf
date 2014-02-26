@@ -4,8 +4,3 @@
         #:json-streams
         #:drakma)
   (:export))
-
-
-(defpackage #:swf-workers
-  (:use #:common-lisp)
-  (:export))
