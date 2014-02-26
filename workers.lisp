@@ -321,20 +321,52 @@
       res)))
 
 
+(define-condition activity-error (error)
+  ((reason :initarg :reason
+           :reader activity-error-reason)
+   (details :initarg :details
+            :initform nil
+            :reader activity-error-details)))
+
+
+(defvar *default-activity-error-reason*)
+(defvar *default-activity-error-details*)
+
+
+(defun error-detail (key)
+  (getf *default-activity-error-details* key))
+
+
+(defun (setf error-detail) (value key)
+  (if (error-detail key)
+    (setf (getf *default-activity-error-details* key) value)
+    (progn (push value *default-activity-error-details*)
+           (push key *default-activity-error-details*)))
+  value)
+
+
 (defmethod worker-compute-task-response ((aw activity-worker) task)
-  (let ((error))
-    (restart-case
-        (handler-bind ((error (lambda (e) (setf error e))))
-          (let ((values (compute-activity-task-values aw task)))
-            (list #'swf::respond-activity-task-completed
-                  :result (serialize-object values)
-                  :task-token (aget task :task-token))))
-      (carry-on ()
-        :report "Fail activity task"
-        (list #'swf::respond-activity-task-failed
-              :task-token (aget task :task-token)
-              :reason (format nil "~A" error) ;; TODO return condition object somehow
-              :details "something wrong")))))
+  (handler-case
+      (let ((*default-activity-error-reason* :error)
+            (*default-activity-error-details* nil))
+        (let (error)
+          (restart-case
+              (handler-bind ((error (lambda (e) (setf error e))))
+                (let ((values (compute-activity-task-values aw task)))
+                  (list #'swf::respond-activity-task-completed
+                        :result (serialize-object values)
+                        :task-token (aget task :task-token))))
+            (carry-on ()
+              :report "Fail activity"
+              (error 'activity-error
+                     :reason *default-activity-error-reason*
+                     :details (list* :condition (format nil "~A" error)
+                                     *default-activity-error-details*))))))
+    (activity-error (error)
+      (list #'swf::respond-activity-task-failed
+            :task-token (aget task :task-token)
+            :reason (serialize-object (activity-error-reason error))
+            :details (serialize-object (activity-error-details error))))))
 
 
 (defun read-new-values ()
