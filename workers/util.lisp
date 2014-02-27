@@ -53,6 +53,15 @@
         (read-from-string string)))))
 
 
+(defun serialize-keyword (keyword)
+  (check-type keyword keyword)
+  (symbol-name keyword))
+
+
+(defun deserialize-keyword (string)
+  (intern string :keyword))
+
+
 ;;; Helpers for dealing with assoc objects
 
 (defun aget (alist key &rest keys)

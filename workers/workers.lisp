@@ -301,7 +301,7 @@
          (decider-function (aget workflow :decider)))
     (let ((*wx* (make-workflow-execution-info (aget task :events)))
           (*decisions* nil))
-      (apply decider-function (deserialize-object (event-input (get-event (task-scheduled-event-id (get-task :workflow))))))
+      (apply decider-function (deserialize-object (event-input (get-event (task-started-event-id *wx*)))))
       (nreverse *decisions*))))
 
 
@@ -352,9 +352,9 @@
         (let (error)
           (restart-case
               (handler-bind ((error (lambda (e) (setf error e))))
-                (let ((values (compute-activity-task-values aw task)))
+                (let ((value (compute-activity-task-value aw task)))
                   (list #'swf::respond-activity-task-completed
-                        :result (serialize-object values)
+                        :result (serialize-object value)
                         :task-token (aget task :task-token))))
             (carry-on ()
               :report "Fail activity"
@@ -369,20 +369,20 @@
             :details (serialize-object (activity-error-details error))))))
 
 
-(defun read-new-values ()
+(defun read-new-value ()
   (format t "Enter a new value: ")
-  (multiple-value-list (eval (read))))
+  (eval (read)))
 
 
-(defun compute-activity-task-values (aw task)
+(defun compute-activity-task-value (aw task)
   (restart-case
       (let* ((activity-type (aget task :activity-type))
              (activity (find-activity (worker-packages aw)
-                                     (aget activity-type :name)
-                                     (aget activity-type :version)))
-            (input (deserialize-object (aget task :input))))
-        (multiple-value-list (apply (aget activity :function) input)))
-    (use-value (&rest new-values)
+                                      (aget activity-type :name)
+                                      (aget activity-type :version)))
+             (input (deserialize-object (aget task :input))))
+        (apply (aget activity :function) input))
+    (use-value (&rest new-value)
       :report "Return something else."
-      :interactive read-new-values
-      new-values)))
+      :interactive read-new-value
+      new-value)))

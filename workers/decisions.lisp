@@ -17,7 +17,7 @@
 
 (defun cancel-workflow-execution (details)
   (%decision :cancel-workflow-execution
-             :details details))
+             :details (serialize-object details)))
 
 
 (defun complete-workflow-execution (result)
@@ -43,14 +43,14 @@
 
 (defun fail-workflow-execution (&key details reason)
   (%decision :fail-workflow-execution
-             :details details
-             :reason reason))
+             :details (serialize-object details)
+             :reason (serialize-keyword reason)))
 
 
 (defun record-marker (&key details marker-name)
   (%decision :record-marker
-             :details details
-             :marker-name marker-name))
+             :details (serialize-object details)
+             :marker-name (serialize-keyword marker-name)))
 
 
 (defun request-cancel-activity-task (activity-id)
@@ -94,7 +94,7 @@
              :control control
              :input (serialize-object input)
              :run-id run-id
-             :signal-name signal-name
+             :signal-name (serialize-keyword signal-name)
              :workflow-id workflow-id))
 
 

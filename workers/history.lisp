@@ -28,45 +28,6 @@
 
 (defvar *current-event-id*)
 
-(defclass workflow-execution-info ()
-  (;(run-id :initarg :run-id)
-   ;(workflow-id :initarg :workflow-id)
-   ;(workflow-type :initarg :workflow-type)
-   (parent-run-id :initarg :parent-run-id)
-   (close-status :initarg :close-status)
-   (close-timestamp :initarg :close-timestamp)
-   (tag-list :initarg :tag-list)
-   (task-list :initarg :task-list)
-   (child-policy :initarg :child-policy)
-   (execution-start-to-close-timeout :initarg :execution-start-to-close-timeout)
-   (task-start-to-close-timeout :initarg :task-start-to-close-timeout)
-   (input :initarg :input)
-   (open-activity-tasks :initarg :open-activity-tasks)
-   (open-child-workflow-executions :initarg :open-child-workflow-executions)
-   (open-decision-tasks :initarg :open-decision-tasks)
-   (open-timers :initarg :open-timers)
-   (cancel-requested :initarg :cancel-requested)
-   (history :initarg :history)
-   (last-decision-task-completed-event-id :initform nil)
-   (workflow-task :initform (make-hash-table))
-   (activity-tasks :initform (make-hash-table :test #'equal))
-   (decision-tasks :initform (make-hash-table))
-   (timer-tasks :initform (make-hash-table :test #'equal))
-   (child-workflow-tasks :initform (make-hash-table :test #'equal))
-   (previous-started-event-id :initform nil)))
-
-
-(defun make-workflow-execution-info (history)
-  (let ((*wx* (make-instance 'workflow-execution-info
-                             :history (map 'vector #'make-history-event history))))
-    (map nil #'update-history-with-event (slot-value *wx* 'history))
-    *wx*))
-
-
-(defun get-event (id)
-  (with-slots (history) *wx*
-    (aref history (1- id))))
-
 
 (defclass task ()
   ((scheduled-event-id :initarg :scheduled-event-id
@@ -78,47 +39,96 @@
    (request-cancel-event-ids :initform nil
                              :reader task-request-cancel-event-ids)))
 
-(defun get-tasks (type)
+
+(defclass workflow-execution-info (task)
+  (;; WorkflowExecutionInfo:
+   (cancel-requested :initarg :cancel-requested)
+   (close-status :initarg :close-status)
+   (close-timestamp :initarg :close-timestamp)
+   (run-id :initarg :run-id)
+   (workflow-id :initarg :workflow-id)
+   (execution-status :initarg :execution-status)
+   (parent-run-id :initarg :parent-run-id)
+   (parent-workflow-id :initarg :parent-workflow-id)
+   (tag-list :initarg :tag-list)
+   (workflow-type :initarg :workflow-type)
+   ;; WorkflowExecutionConfiguration:
+   (child-policy :initarg :child-policy)
+   (execution-start-to-close-timeout :initarg :execution-start-to-close-timeout)
+   (task-list :initarg :task-list)
+   (task-start-to-close-timeout :initarg :task-start-to-close-timeout)
+   ;; PollForDecisionTask:
+   (events :initarg :events)
+   (previous-started-event-id :initarg :previous-started-event-id)
+   (started-event-id :initform :started-event-id)
+   ;; Derived from events:
+   (input :initarg :input)
+   (open-activity-tasks :initarg :open-activity-tasks)
+   (open-child-workflow-executions :initarg :open-child-workflow-executions)
+   (open-decision-tasks :initarg :open-decision-tasks)
+   (open-timers :initarg :open-timers)
+   (activity-tasks :initform (make-hash-table :test #'equal))
+   (decision-tasks :initform (make-hash-table))
+   (timer-tasks :initform (make-hash-table :test #'equal))
+   (child-workflow-tasks :initform (make-hash-table :test #'equal))))
+
+
+(defun make-workflow-execution-info (events)
+  (let ((*wx* (make-instance 'workflow-execution-info
+                             :events (map 'vector #'make-history-event events))))
+    (map nil #'update-history-with-event (slot-value *wx* 'events))
+    *wx*))
+
+
+(defun get-event (id)
+  (with-slots (events) *wx*
+    (aref events (1- id))))
+
+
+(defun get-tasks-table (type)
   (slot-value *wx* (ecase type
-                     (:workflow 'workflow-task)
                      (:activity 'activity-tasks)
                      (:decision 'decision-tasks)
                      (:timer 'timer-tasks)
                      (:child-workflow 'child-workflow-tasks))))
 
-(defun get-task (type &optional id)
-  (gethash id (get-tasks type)))
+
+(defun get-task (type &optional id error-p)
+  (case type
+    (:workflow
+     *wx*)
+    (otherwise
+     (or (gethash id (get-tasks-table type))
+         (when error-p
+           (error "Task not found: ~S ~S" type id))))))
+
 
 (defun count-open-tasks (type)
-  (loop for task being the hash-values of (get-tasks type)
+  (loop for task being the hash-values of (get-tasks-table type)
         count (not (task-closed-event-id task))))
 
+
 (defun %schedule-task (type &optional id)
-  (let ((tasks (get-tasks type)))
+  (let ((tasks (get-tasks-table type)))
     (assert (null (gethash id tasks)) () "Program error: duplicate task id ~S ~S" type id)
     (let ((task (make-instance 'task :scheduled-event-id *current-event-id*)))
       (setf (gethash id tasks) task)
       task)))
 
 (defun %start-task (type &optional id)
-  (when (eql type :decision)
-    (setf (slot-value *wx* 'previous-started-event-id) *current-event-id*))
-  (let ((task (gethash id (get-tasks type))))
-    (assert task () "Program error: unknown task id ~S ~S" type id)
+  (let ((task (get-task type id)))
     (setf (slot-value task 'started-event-id) *current-event-id*)
     task))
 
 (defun %close-task (type &optional id)
-  (let ((task (gethash id (get-tasks type))))
-    (assert task () "Program error: unknown task id ~S ~S" type id)
+  (let ((task (get-task type id)))
     (setf (slot-value task 'closed-event-id) *current-event-id*)
     task))
 
 (defun %request-cancel-task (type &optional id)
   (when (eq type :workflow)
     (setf (slot-value *wx* 'cancel-requested) t))
-  (let ((task (gethash id (get-tasks type))))
-    (assert task () "Program error: unknown task id ~S ~S" type id)
+  (let ((task (get-task type id)))
     (push *current-event-id* (slot-value task 'request-cancel-event-ids))
     task))
 
@@ -127,7 +137,6 @@
     (if (consp slot)
         slot
         (list slot :type slot :required t))))
-
 
 (defmacro define-history-event (name slots &body body)
   (let ((slots (mapcar #'normalize-slot slots)))
@@ -224,7 +233,6 @@
      task-list
      (task-start-to-close-timeout :type timeout)
      workflow-type)
-  (%schedule-task :workflow)
   (%start-task :workflow))
 
 
