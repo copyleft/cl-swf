@@ -30,7 +30,10 @@
 
 
 (defclass task ()
-  ((scheduled-event-id :initarg :scheduled-event-id
+  ((state :initarg :state
+          :initform nil)
+   (scheduled-event-id :initarg :scheduled-event-id
+                       :initform nil
                        :reader task-scheduled-event-id)
    (started-event-id :initform nil
                      :reader task-started-event-id)
@@ -38,6 +41,22 @@
                     :reader task-closed-event-id)
    (request-cancel-event-ids :initform nil
                              :reader task-request-cancel-event-ids)))
+
+(defmethod task-scheduled-event (task)
+  (when (task-scheduled-event-id task)
+    (get-event (task-scheduled-event-id task))))
+
+(defmethod task-started-event (task)
+  (when (task-started-event-id task)
+    (get-event (task-started-event-id task))))
+
+(defmethod task-closed-event (task)
+  (when (task-closed-event-id task)
+    (get-event (task-closed-event-id task))))
+
+
+(defclass activity (task)
+  ())
 
 
 (defclass workflow-execution-info (task)
@@ -87,7 +106,7 @@
 
 (defun get-tasks-table (type)
   (slot-value *wx* (ecase type
-                     (:activity 'activity-tasks)
+                     (activity 'activity-tasks)
                      (:decision 'decision-tasks)
                      (:timer 'timer-tasks)
                      (:child-workflow 'child-workflow-tasks))))
@@ -102,6 +121,31 @@
          (when error-p
            (error "Task not found: ~S ~S" type id))))))
 
+(defvar *task*)
+
+(defmacro with-new-task ((type &optional id) &body body)
+  `(let ((*task* (%add-task ',type ,id)))
+     ,@body))
+
+(defmacro with-task ((type &optional id) &body body)
+  `(let ((*task* (get-task ',type ,id)))
+     ,@body))
+
+(defun %state (new-state)
+  (setf (slot-value *task* 'state) new-state))
+
+(defun %schedule ()
+  (slot-value *task* 'scheduled-event-id) *current-event-id*)
+
+(defun %start ()
+  (setf (slot-value *task* 'started-event-id) *current-event-id*))
+
+(defun %close ()
+  (setf (slot-value *task* 'closed-event-id) *current-event-id*))
+
+(defun %request-cancel ()
+  (push *current-event-id* (slot-value *task* 'request-cancel-event-ids)))
+
 
 (defun count-open-tasks (type)
   (loop for task being the hash-values of (get-tasks-table type)
@@ -114,6 +158,31 @@
     (let ((task (make-instance 'task :scheduled-event-id *current-event-id*)))
       (setf (gethash id tasks) task)
       task)))
+
+(defun %add-task (type &optional id)
+  (let ((tasks (get-tasks-table type)))
+    (assert (null (gethash id tasks)) () "Program error: duplicate task id ~S ~S" type id)
+    (let ((task (make-instance type)))
+      (setf (gethash id tasks) task)
+      task)))
+
+(defun %update-task (type id new-state &rest events)
+  (let ((task (if (member :new events)
+                  (%add-task type id)
+                  (get-task type id))))
+    (setf (slot-value task 'state) new-state)
+    (loop for event in events do
+          (ecase event
+            (:schedule (setf (slot-value task 'scheduled-event-id) *current-event-id*))
+            (:start (setf (slot-value task 'started-event-id) *current-event-id*))
+            (:close (setf (slot-value task 'closed-event-id) *current-event-id*))
+            (:new)))
+    task))
+
+(defun %task-state (type id new-state)
+  (let ((task (get-task type id)))
+    (setf (slot-value task 'state) new-state)
+    task))
 
 (defun %start-task (type &optional id)
   (let ((task (get-task type id)))
@@ -319,6 +388,7 @@
 
 ;; Activity events -------------------------------------------------------------------------
 
+
 (define-history-event activity-task-scheduled-event
     (activity-id
      activity-type
@@ -330,7 +400,9 @@
      (schedule-to-start-timeout :type timeout)
      (start-to-close-timeout :type timeout)
      task-list)
-  (%schedule-task :activity activity-id))
+  (with-new-task (activity activity-id)
+    (%schedule)
+    (%state :scheduled)))
 
 
 (define-history-event schedule-activity-task-failed-event
@@ -338,22 +410,26 @@
      activity-type
      (cause :type schedule-activity-task-failed-cause :required t)
      decision-task-completed-event-id)
-  (%schedule-task :activity activity-id)
-  (%start-task :activity activity-id)
-  (%close-task :activity activity-id))
+  (with-new-task (activity activity-id)
+    (%close)
+    (%state :schedule-failed)))
 
 
 (define-history-event activity-task-started-event
     ((identity :type string-256)
      scheduled-event-id)
-  (%start-task :activity (event-activity-id (get-event scheduled-event-id))))
+  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+    (%start)
+    (%state :started)))
 
 
 (define-history-event activity-task-completed-event
     ((result :type string-32k)
      scheduled-event-id
      started-event-id)
-  (%close-task :activity (event-activity-id (get-event scheduled-event-id))))
+  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+    (%close)
+    (%state :completed)))
 
 
 (define-history-event activity-task-failed-event
@@ -361,7 +437,9 @@
      (reason :type string-256)
      scheduled-event-id
      started-event-id)
-  (%close-task :activity (event-activity-id (get-event scheduled-event-id))))
+  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+    (%close)
+    (%state :failed)))
 
 
 (define-history-event activity-task-timed-out-event
@@ -369,7 +447,9 @@
      scheduled-event-id
      started-event-id
      (timeout-type :type activity-task-timeout-type :required t))
-  (%close-task :activity (event-activity-id (get-event scheduled-event-id))))
+  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+    (%close)
+    (%state :timed-out)))
 
 
 (define-history-event activity-task-canceled-event
@@ -377,13 +457,16 @@
      (latest-cancel-requested-event-id :type event-id)
      scheduled-event-id
      started-event-id)
-  (%close-task :activity (event-activity-id (get-event scheduled-event-id))))
+  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+    (%close)
+    (%state :canceled)))
 
 
 (define-history-event activity-task-cancel-requested-event
     (activity-id
      decision-task-completed-event-id)
-  (%request-cancel-task :activity activity-id))
+  (with-task (activity activity-id)
+    (%request-cancel)))
 
 
 (define-history-event request-cancel-activity-task-failed-event
