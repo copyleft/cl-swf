@@ -6,30 +6,6 @@
 
 ;;; Common worker ----------------------------------------------------------------------------------
 
-(defclass task-type ()
-  ((name :initarg :name :reader task-type-name)
-   (options :initarg :options :reader task-type-options)
-   (function :initarg :function :reader task-type-function)))
-
-(defclass workflow-type (task-type) ())
-(defclass activity-type (task-type) ())
-
-(defgeneric ensure-task-type (task-type))
-
-(defmethod ensure-task-type ((workflow-type workflow-type))
-  (handler-case
-      (apply #'swf::register-workflow-type (task-type-options workflow-type))
-    (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
-
-(defmethod ensure-task-type ((activity-type activity-type))
-  (handler-case
-      (apply #'swf::register-activity-type (task-type-options activity-type))
-    (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
-
 
 (defvar *worker*)
 
@@ -154,8 +130,7 @@
                                     default-task-start-to-close-timeout
                                     description)
                            &body body)
-  (let ((decider-function (intern (format nil "%%~A" name)))
-        (string-name (string name))
+  (let ((string-name (string name))
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@workflow-args
@@ -174,13 +149,12 @@
                           :task-list task-list
                           :task-start-to-close-timeout task-start-to-close-timeout
                           :workflow-id workflow-id
-                          :workflow-type (alist :name ,string-name :version ,string-version)))
-       (defun ,decider-function (&key ,@workflow-args)
-         ,@body)
+                          :workflow-type (get ',name 'task-type)))
        (setf (get ',name 'task-type)
              (make-instance 'workflow-type
                             :name ',name
-                            :function #',decider-function
+                            :function (lambda (&key ,@workflow-args)
+                                        ,@body)
                             :options (list :name ,string-name
                                            :version ,string-version
                                            :default-child-policy
@@ -218,7 +192,7 @@
                               :task-list task-list
                               :task-start-to-close-timeout task-start-to-close-timeout
                               :workflow-id id
-                              :workflow-type workflow-type)))
+                              :workflow-type (serialize-task-type workflow-type))))
           (swf::workflow-execution-already-started-error (err)
             (when workflow-id
               (error err))))))
@@ -237,8 +211,7 @@
                                     (default-task-start-to-close-timeout :none)
                                     description)
                            &body body)
-  (let ((activity-function (intern (format nil "%%~A" name)))
-        (string-name (string name))
+  (let ((string-name (string name))
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@activity-args
@@ -250,7 +223,7 @@
                        start-to-close-timeout
                        task-list)
          (schedule-activity-task :activity-id activity-id
-                                 :activity-type (alist :name ,string-name :version ,string-version)
+                                 :activity-type (get ',name 'task-type)
                                  :control control
                                  :heartbeat-timeout heartbeat-timeout
                                  :input (list ,@(loop for arg in activity-args
@@ -260,12 +233,11 @@
                                  :schedule-to-start-timeout schedule-to-start-timeout
                                  :start-to-close-timeout start-to-close-timeout
                                  :task-list task-list))
-       (defun ,activity-function (&key ,@activity-args)
-         ,@body)
        (setf (get ',name 'task-type)
              (make-instance 'activity-type
                             :name ',name
-                            :function #',activity-function
+                            :function (lambda (&key ,@activity-args)
+                                        ,@body)
                             :options (list :name ,string-name
                                            :version ,string-version
                                            :default-task-heartbeat-timeout
@@ -298,7 +270,7 @@
     (let ((*wx* (make-workflow-execution-info (aget task :events)))
           (*decisions* nil))
       (apply decider-function (event-input (get-event (task-started-event-id *wx*))))
-      (nreverse *decisions*))))
+      (mapcar #'transform-decision (nreverse *decisions*)))))
 
 
 ;;; Handling activity tasks ------------------------------------------------------------------------

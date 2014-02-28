@@ -6,6 +6,38 @@
     (read-line in)))
 
 
+(defclass task-type ()
+  ((name :initarg :name :reader task-type-name)
+   (options :initarg :options :reader task-type-options)
+   (function :initarg :function :reader task-type-function)))
+
+
+(defun serialize-task-type (task-type)
+  (with-slots (options) task-type
+    (alist :name (getf options :name)
+           :version (getf options :version))))
+
+
+(defclass workflow-type (task-type) ())
+(defclass activity-type (task-type) ())
+
+(defgeneric ensure-task-type (task-type))
+
+(defmethod ensure-task-type ((workflow-type workflow-type))
+  (handler-case
+      (apply #'swf::register-workflow-type (task-type-options workflow-type))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+(defmethod ensure-task-type ((activity-type activity-type))
+  (handler-case
+      (apply #'swf::register-activity-type (task-type-options activity-type))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+
 ;;; Serialization ---------------------------------------------------------------------------------
 ;;;
 ;;; Serialization is limited to numbers, strings, T, NIL, keyword symbols, conses / lists

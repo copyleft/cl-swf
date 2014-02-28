@@ -1,129 +1,114 @@
 (in-package #:swf-workers)
 
-
 (defvar *decisions*)
+(defvar *decision*)
+
+(defclass decision () ())
+(defgeneric transform-decision (decision))
+
+(defmacro define-decision (name slots &body body)
+  (let ((slots (mapcar #'normalize-slot slots)))
+    `(progn
+       (defclass ,name (decision)
+         ,(loop for (slot-name) in slots
+                collect `(,slot-name
+                          :initarg ,(intern (symbol-name slot-name) :keyword)
+                          :initform nil
+                          :reader ,(intern (format nil "DECISION-~A" slot-name)))))
+       (defun ,name (&key ,@(mapcar #'car slots))
+         (update-history-with-decision
+          (make-instance ',name
+                         ,@(loop for (slot-name) in slots
+                                 collect (intern (symbol-name slot-name) :keyword)
+                                 collect slot-name))))
+       (defmethod transform-decision ((decision ,name))
+         (alist :decision-type ',name
+                ,(intern (format nil "~A-DECISION-ATTRIBUTES" name) :keyword)
+                (list ,@(loop for (slot-name transformer) in slots collect
+                              `(cons ,(intern (symbol-name slot-name) :keyword)
+                                     (,transformer (slot-value decision ',slot-name)))))))
+       (defmethod update-history-with-decision ((*decision* ,name))
+         (push *decision* *decisions*)
+         (with-slots (,@(mapcar #'car slots))
+             *decision*
+           ,@body)
+         *decision*))))
 
 
-(defmacro %decision (type &rest attrs)
-  `(push (alist :decision-type ,type
-                ,(intern (format nil "~A-DECISION-ATTRIBUTES" type) :keyword)
-                (alist ,@attrs))
-         *decisions*))
+(define-decision cancel-timer
+    (timer-id))
 
 
-(defun cancel-timer (timer-id)
-  (%decision :cancel-timer :timer-id timer-id))
+(define-decision cancel-workflow-execution
+    ((details serialize-object)))
 
 
-(defun cancel-workflow-execution (details)
-  (%decision :cancel-workflow-execution
-             :details (serialize-object details)))
+(define-decision complete-workflow-execution
+    ((result serialize-object)))
 
 
-(defun complete-workflow-execution (result)
-  (%decision :complete-workflow-execution :result (serialize-object result)))
+(define-decision continue-as-new-workflow-execution
+    (child-policy
+     execution-start-to-close-timeout
+     (input serialize-object)
+     tag-list
+     task-list
+     task-start-to-close-timeout
+     workflow-type-version))
 
 
-(defun continue-as-new-workflow-execution (&key child-policy
-                                             execution-start-to-close-timeout
-                                             input
-                                             tag-list
-                                             task-list
-                                             task-start-to-close-timeout
-                                             workflow-type-version)
-  (%decision :continue-as-new-workflow-execution
-             :child-policy child-policy
-             :execution-start-to-close-timeout execution-start-to-close-timeout
-             :input (serialize-object input)
-             :tag-list tag-list
-             :task-list task-list
-             :task-start-to-close-timeout task-start-to-close-timeout
-             :workflow-type-version workflow-type-version))
+(define-decision fail-workflow-execution
+    ((details serialize-object)
+     (reason serialize-keyword)))
 
 
-(defun fail-workflow-execution (&key details reason)
-  (%decision :fail-workflow-execution
-             :details (serialize-object details)
-             :reason (serialize-keyword reason)))
+(define-decision record-marker
+    ((details serialize-object)
+     (marker-name serialize-keyword)))
 
 
-(defun record-marker (&key details marker-name)
-  (%decision :record-marker
-             :details (serialize-object details)
-             :marker-name (serialize-keyword marker-name)))
+(define-decision request-cancel-activity-task
+    (activity-id))
 
 
-(defun request-cancel-activity-task (activity-id)
-  (%decision :request-cancel-activity-task :activity-id activity-id))
+(define-decision request-cancel-external-workflow-execution
+    ((control serialize-object)
+     run-id workflow-id))
 
 
-(defun request-cancel-external-workflow-execution (&key control run-id workflow-id)
-  (%decision :request-cancel-external-workflow-execution
-             :control control
-             :run-id run-id
-             :workflow-id workflow-id))
+(define-decision schedule-activity-task
+    (activity-id
+     (activity-type serialize-task-type)
+     (control serialize-object)
+     heartbeat-timeout
+     (input serialize-object)
+     schedule-to-close-timeout
+     schedule-to-start-timeout
+     start-to-close-timeout
+     task-list))
 
 
-(defun schedule-activity-task (&key activity-id
-                                 activity-type
-                                 control
-                                 heartbeat-timeout
-                                 input
-                                 schedule-to-close-timeout
-                                 schedule-to-start-timeout
-                                 start-to-close-timeout
-                                  task-list)
-  (%decision :schedule-activity-task
-             :activity-id (or activity-id (make-uuid))
-             :activity-type activity-type
-             :control control
-             :heartbeat-timeout heartbeat-timeout
-             :input (serialize-object input)
-             :schedule-to-close-timeout schedule-to-close-timeout
-             :schedule-to-start-timeout schedule-to-start-timeout
-             :start-to-close-timeout start-to-close-timeout
-             :task-list task-list))
+(define-decision signal-external-workflow-execution
+    ((control serialize-object)
+     (input serialize-object)
+     run-id
+     (signal-name serialize-keyword)
+     workflow-id))
 
 
-(defun signal-external-workflow-execution (&key control
-                                             input
-                                             run-id
-                                             signal-name
-                                             workflow-id)
-  (%decision :signal-external-workflow-execution
-             :control control
-             :input (serialize-object input)
-             :run-id run-id
-             :signal-name (serialize-keyword signal-name)
-             :workflow-id workflow-id))
+(define-decision start-child-workflow-execution
+    (child-policy
+     (control serialize-object)
+     execution-start-to-close-timeout
+     (input serialize-object)
+     tag-list
+     task-list
+     task-start-to-close-timeout
+     workflow-id
+     (workflow-type serialize-task-type)))
 
 
-(defun start-child-workflow-execution (&key child-policy
-                                         control
-                                         execution-start-to-close-timeout
-                                         input
-                                         tag-list
-                                         task-list
-                                         task-start-to-close-timeout
-                                         workflow-id
-                                         workflow-type)
-  (%decision :start-child-workflow-execution
-             :child-policy child-policy
-             :control control
-             :execution-start-to-close-timeout execution-start-to-close-timeout
-             :input (serialize-object input)
-             :tag-list tag-list
-             :task-list task-list
-             :task-start-to-close-timeout task-start-to-close-timeout
-             :workflow-id (or workflow-id (make-uuid))
-             :workflow-type workflow-type))
-
-
-(defun start-timer (&key control start-to-fire-timeout timer-id)
-  (%decision :start-timer
-             :control control
-             :start-to-fire-timeout start-to-fire-timeout
-             :timer-id (or timer-id (make-uuid))))
-
-
-
+(define-decision start-timer
+    ((control serialize-object)
+     start-to-fire-timeout
+     timer-id))

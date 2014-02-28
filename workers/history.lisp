@@ -44,11 +44,11 @@
                              :reader task-request-cancel-event-ids)))
 
 
-(defclass decision (task) ())
-(defclass activity (task) ())
-(defclass workflow (task) ())
-(defclass child-workflow (workflow) ())
-(defclass timer (task) ())
+(defclass decision-task (task) ())
+(defclass activity-task (task) ())
+(defclass workflow-task (task) ())
+(defclass child-workflow-task (workflow-task) ())
+(defclass timer-task (task) ())
 
 
 (defmethod task-scheduled-event (task)
@@ -64,7 +64,7 @@
     (get-event (task-closed-event-id task))))
 
 
-(defclass workflow-execution-info (workflow)
+(defclass workflow-execution-info (workflow-task)
   (;; WorkflowExecutionInfo:
    (cancel-requested :initarg :cancel-requested)
    (close-status :initarg :close-status)
@@ -114,15 +114,15 @@
 
 (defun get-tasks-table (type)
   (slot-value *wx* (ecase type
-                     (activity 'activity-tasks)
-                     (decision 'decision-tasks)
-                     (timer 'timer-tasks)
-                     (child-workflow 'child-workflow-tasks))))
+                     (activity-task 'activity-tasks)
+                     (decision-task 'decision-tasks)
+                     (timer-task 'timer-tasks)
+                     (child-workflow-task 'child-workflow-tasks))))
 
 
 (defun get-task (type &optional id error-p)
   (case type
-    (workflow *wx*)
+    (workflow-task *wx*)
     (otherwise
      (or (gethash id (get-tasks-table type))
          (when error-p
@@ -207,7 +207,7 @@
      task-list
      task-start-to-close-timeout
      workflow-type)
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%start)
     (%state :started)))
 
@@ -215,7 +215,7 @@
 (define-history-event workflow-execution-completed-event
     (decision-task-completed-event-id
      (result deserialize-object))
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%close)
     (%state :closed)))
 
@@ -224,7 +224,7 @@
     (decision-task-completed-event-id
      (details deserialize-object)
      (reason deserialize-keyword))
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%close)
     (%state :failed)))
 
@@ -232,7 +232,7 @@
 (define-history-event workflow-execution-timed-out-event
     (child-policy
      timeout-type)
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%close)
     (%state :timed-out)))
 
@@ -240,7 +240,7 @@
 (define-history-event workflow-execution-canceled-event
     (decision-task-completed-event-id
      (details deserialize-object))
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%close)
     (%state :canceled)))
 
@@ -250,7 +250,7 @@
      child-policy
      (details deserialize-object)
      (reason deserialize-keyword))
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%close)
     (%state :terminated)))
 
@@ -265,7 +265,7 @@
      task-list
      task-start-to-close-timeout
      workflow-type)
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%close)
     (%state :continued-as-new)))
 
@@ -274,7 +274,7 @@
     (cause
      external-initiated-event-id
      external-workflow-execution)
-  (with-task (workflow)
+  (with-task (workflow-task)
     (%request-cancel)))
 
 
@@ -284,7 +284,7 @@
 (define-history-event decision-task-scheduled-event
     (start-to-close-timeout
      task-list)
-  (with-new-task (decision id)
+  (with-new-task (decision-task id)
     (%schedule)
     (%state :scheduled)))
 
@@ -292,7 +292,7 @@
 (define-history-event decision-task-started-event
     ((identity deserialize-keyword)
      scheduled-event-id)
-  (with-task (decision scheduled-event-id)
+  (with-task (decision-task scheduled-event-id)
     (%start)
     (%state :started)))
 
@@ -300,7 +300,7 @@
 (define-history-event decision-task-completed-event
     (scheduled-event-id
      started-event-id)
-  (with-task (decision scheduled-event-id)
+  (with-task (decision-task scheduled-event-id)
     (%close)
     (%state :completed)))
 
@@ -309,7 +309,7 @@
     (scheduled-event-id
      started-event-id
      timeout-type)
-  (with-task (decision scheduled-event-id)
+  (with-task (decision-task scheduled-event-id)
     (%close)
     (%state :timed-out)))
 
@@ -328,7 +328,7 @@
      schedule-to-start-timeout
      start-to-close-timeout
      task-list)
-  (with-new-task (activity activity-id)
+  (with-new-task (activity-task activity-id)
     (%schedule)
     (%state :scheduled)))
 
@@ -338,7 +338,7 @@
      activity-type
      cause
      decision-task-completed-event-id)
-  (with-new-task (activity activity-id)
+  (with-new-task (activity-task activity-id)
     (%close)
     (%state :schedule-failed)))
 
@@ -346,7 +346,7 @@
 (define-history-event activity-task-started-event
     (identity
      scheduled-event-id)
-  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
     (%start)
     (%state :started)))
 
@@ -355,7 +355,7 @@
     ((result deserialize-object)
      scheduled-event-id
      started-event-id)
-  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
     (%close)
     (%state :completed)))
 
@@ -365,7 +365,7 @@
      (reason deserialize-keyword)
      scheduled-event-id
      started-event-id)
-  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
     (%close)
     (%state :failed)))
 
@@ -375,7 +375,7 @@
      scheduled-event-id
      started-event-id
      timeout-type)
-  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
     (%close)
     (%state :timed-out)))
 
@@ -385,7 +385,7 @@
      latest-cancel-requested-event-id
      scheduled-event-id
      started-event-id)
-  (with-task (activity (event-activity-id (get-event scheduled-event-id)))
+  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
     (%close)
     (%state :canceled)))
 
@@ -393,7 +393,7 @@
 (define-history-event activity-task-cancel-requested-event
     (activity-id
      decision-task-completed-event-id)
-  (with-task (activity activity-id)
+  (with-task (activity-task activity-id)
     (%request-cancel)))
 
 
@@ -427,7 +427,7 @@
      decision-task-completed-event-id
      start-to-fire-timeout
      timer-id)
-  (with-new-task (timer timer-id)
+  (with-new-task (timer-task timer-id)
     (%start)
     (%state :started)))
 
@@ -436,7 +436,7 @@
     (cause
      decision-task-completed-event-id
      timer-id)
-  (with-new-task (timer timer-id)
+  (with-new-task (timer-task timer-id)
     (%close)
     (%state :failed)))
 
@@ -444,7 +444,7 @@
 (define-history-event timer-fired-event
     (started-event-id
      timer-id)
-  (with-task (timer timer-id)
+  (with-task (timer-task timer-id)
     (%close)
     (%state :fired)))
 
@@ -453,7 +453,7 @@
     (decision-task-completed-event-id
      started-event-id
      timer-id)
-  (with-task (timer timer-id)
+  (with-task (timer-task timer-id)
     (%close)
     (%state :canceled)))
 
