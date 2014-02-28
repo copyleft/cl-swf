@@ -87,6 +87,24 @@
     (aref events (1- id))))
 
 
+(defclass task ()
+  ((state :initarg :state
+          :initform nil)
+   (scheduled-event-id :initarg :scheduled-event-id
+                       :initform nil
+                       :reader task-scheduled-event-id)
+   (started-event-id :initform nil
+                     :reader task-started-event-id)
+   (closed-event-id :initform nil
+                    :reader task-closed-event-id)
+   (request-cancel-event-ids :initform nil
+                             :reader task-request-cancel-event-ids)))
+
+
+(defclass activity (task)
+  ())
+
+
 (defun get-tasks-table (type)
   (slot-value *wx* (ecase type
                      (activity 'activity-tasks)
@@ -211,133 +229,73 @@
              ,@body))))))
 
 
-(deftype event-id () '(integer 0 99999999))
-(deftype decision-task-completed-event-id () 'event-id)
-(deftype scheduled-event-id () 'event-id)
-(deftype started-event-id () 'event-id)
-(deftype initiated-event-id () 'event-id)
-
-(defun string-64-p (string)
-  (and (stringp string) (<= (length string) 64)))
-(deftype string-64 () '(satisfies string-64-p))
-(defun string-256-p (string)
-  (and (stringp string) (<= (length string) 256)))
-(deftype string-256 () '(satisfies string-256-p))
-(defun string-2k-p (string)
-  (and (stringp string) (<= (length string) 2048)))
-(deftype string-2k () '(satisfies string-2k-p))
-(defun string-32k-p (string)
-  (and (stringp string) (<= (length string) 32768)))
-(deftype string-32k () '(satisfies string-32k-p))
-
-(deftype activity-type () '(cons string-256 string-64))
-(deftype workflow-type () '(cons string-256 string-64))
-
-(deftype run-id () 'integer)
-(deftype activity-id () 'string-256)
-(deftype workflow-id () 'string-256)
-(deftype workflow-execution () '(cons workflow-id run-id))
-(deftype timer-id () 'string-256)
-(deftype task-list () 'string-256)
-
-
-(deftype timeout () '(integer 0 99999999))
-(deftype timeout-or-none () '(or timeout (member :none)))
-
-(defun tag-list-p (tag-list)
-  (and (listp tag-list)
-       (<= (length tag-list) 5)
-       (every #'string-256-p tag-list)))
-(deftype tag-list () '(satisfies tag-list-p))
-
-(deftype schedule-activity-task-failed-cause ()
-  '(member
-    :activity-type-deprecated
-    :activity-type-does-not-exist
-    :activity-id-already-in-use
-    :open-activities-limit-exceeded
-    :activity-creation-rate-exceeded
-    :default-schedule-to-close-timeout-undefined
-    :default-task-list-undefined
-    :default-schedule-to-start-timeout-undefined
-    :default-start-to-close-timeout-undefined
-    :default-heartbeat-timeout-undefined
-    :operation-not-permitted))
-
-(deftype activity-task-timeout-type ()
-  '(member :start-to-close :schedule-to-start :schedule-to-close :heartbeat))
-
-(deftype child-policy ()
-  '(member :terminate :request-cancel :abandon))
-
-
 ;; Workflow events -------------------------------------------------------------------------
 
 
 (define-history-event workflow-execution-started-event
     (child-policy
-     (continued-execution-run-id :type run-id)
-     (execution-start-to-close-timeout :type timeout)
-     (input :type string-32k)
-     (parent-initiated-event-id :type event-id)
-     (parent-workflow-execution :type workflow-execution)
+     continued-execution-run-id
+     execution-start-to-close-timeout
+     (input #'deserialize-object)
+     parent-initiated-event-id
+     parent-workflow-execution
      tag-list
      task-list
-     (task-start-to-close-timeout :type timeout)
+     task-start-to-close-timeout
      workflow-type)
   (%start-task :workflow))
 
 
 (define-history-event workflow-execution-completed-event
     (decision-task-completed-event-id
-     (result :type string-32k))
+     (result #'deserialize-object))
   (%close-task :workflow))
 
 
 (define-history-event workflow-execution-failed-event
     (decision-task-completed-event-id
-     (details :type string-32k)
-     (reason :type string-256))
+     (details #'deserialize-object)
+     (reason #'deserialize-keyword))
   (%close-task :workflow))
 
 
 (define-history-event workflow-execution-timed-out-event
     (child-policy
-     (timeout-type :type (member :start-to-close) :required t))
+     timeout-type)
   (%close-task :workflow))
 
 
 (define-history-event workflow-execution-canceled-event
     (decision-task-completed-event-id
-     (details :type string-32k))
+     (details #'deserialize-object))
   (%close-task :workflow))
 
 
 (define-history-event workflow-execution-terminated-event
-    ((cause :type (member :child-policy-applied :event-limit-exceeded :operator-initiated))
+    (cause
      child-policy
-     (details :type string-32k)
-     (reason :type string-256))
+     (details #'deserialize-object)
+     (reason #'deserialize-keyword))
   (%close-task :workflow))
 
 
 (define-history-event workflow-execution-continued-as-new-event
     (child-policy
      decision-task-completed-event-id
-     (execution-start-to-close-timeout :type timeout-or-none)
-     (input :type string-32k)
-     (new-execution-run-id :type run-id :required t)
+     execution-start-to-close-timeout
+     (input #'deserialize-object)
+     new-execution-run-id
      tag-list
      task-list
-     (task-start-to-close-timeout :type timeout-or-none)
+     task-start-to-close-timeout
      workflow-type)
   (%close-task :workflow))
 
 
 (define-history-event workflow-execution-cancel-requested-event
-    ((cause :type (member :child-policy-applied))
-     (external-initiated-event-id :type event-id)
-     (external-workflow-execution :type workflow-execution))
+    (cause
+     external-initiated-event-id
+     external-workflow-execution)
   (%request-cancel-task :workflow))
 
 
@@ -345,13 +303,13 @@
 
 
 (define-history-event decision-task-scheduled-event
-    ((start-to-close-timeout :type timeout)
+    (start-to-close-timeout
      task-list)
   (%schedule-task :decision id))
 
 
 (define-history-event decision-task-started-event
-    ((identity :type string-256)
+    ((identity #'deserialize-keyword)
      scheduled-event-id)
   (%start-task :decision scheduled-event-id))
 
@@ -365,7 +323,7 @@
 (define-history-event decision-task-timed-out-event
     (scheduled-event-id
      started-event-id
-     (timeout-type :type (member :start-to-close) :required t))
+     timeout-type)
   (%close-task :decision scheduled-event-id))
 
 
@@ -375,13 +333,13 @@
 (define-history-event activity-task-scheduled-event
     (activity-id
      activity-type
-     (control :type string-32k)
+     (control #'deserialize-object)
      decision-task-completed-event-id
-     (heartbeat-timeout :type timeout)
-     (input :type string-32k)
-     (schedule-to-close-timeout :type timeout)
-     (schedule-to-start-timeout :type timeout)
-     (start-to-close-timeout :type timeout)
+     heartbeat-timeout
+     (input #'deserialize-object)
+     schedule-to-close-timeout
+     schedule-to-start-timeout
+     start-to-close-timeout
      task-list)
   (with-new-task (activity activity-id)
     (%schedule)
@@ -391,7 +349,7 @@
 (define-history-event schedule-activity-task-failed-event
     (activity-id
      activity-type
-     (cause :type schedule-activity-task-failed-cause :required t)
+     cause
      decision-task-completed-event-id)
   (with-new-task (activity activity-id)
     (%close)
@@ -399,7 +357,7 @@
 
 
 (define-history-event activity-task-started-event
-    ((identity :type string-256)
+    (identity
      scheduled-event-id)
   (with-task (activity (event-activity-id (get-event scheduled-event-id)))
     (%start)
@@ -407,7 +365,7 @@
 
 
 (define-history-event activity-task-completed-event
-    ((result :type string-32k)
+    ((result #'deserialize-object)
      scheduled-event-id
      started-event-id)
   (with-task (activity (event-activity-id (get-event scheduled-event-id)))
@@ -416,8 +374,8 @@
 
 
 (define-history-event activity-task-failed-event
-    ((details :type string-32k)
-     (reason :type string-256)
+    ((details #'deserialize-object)
+     (reason #'deserialize-keyword)
      scheduled-event-id
      started-event-id)
   (with-task (activity (event-activity-id (get-event scheduled-event-id)))
@@ -426,18 +384,18 @@
 
 
 (define-history-event activity-task-timed-out-event
-    ((details :type string-2k)
+    ((details #'deserialize-object)
      scheduled-event-id
      started-event-id
-     (timeout-type :type activity-task-timeout-type :required t))
+     timeout-type)
   (with-task (activity (event-activity-id (get-event scheduled-event-id)))
     (%close)
     (%state :timed-out)))
 
 
 (define-history-event activity-task-canceled-event
-    ((details :type string-32k)
-     (latest-cancel-requested-event-id :type event-id)
+    ((details #'deserialize-object)
+     latest-cancel-requested-event-id
      scheduled-event-id
      started-event-id)
   (with-task (activity (event-activity-id (get-event scheduled-event-id)))
@@ -454,7 +412,7 @@
 
 (define-history-event request-cancel-activity-task-failed-event
     (activity-id
-     (cause :type (member :activity-id-unknown) :required t)
+     cause
      decision-task-completed-event-id))
 
 
@@ -462,32 +420,32 @@
 
 
 (define-history-event workflow-execution-signaled-event
-    ((external-initiated-event-id :type event-id)
-     (external-workflow-execution :type workflow-execution)
-     (input :type string-32k)
-     (signal-name :type string-256 :required t)))
+    (external-initiated-event-id
+     external-workflow-execution
+     (input #'deserialize-object)
+     (signal-name #'deserialize-keyword)))
 
 
 (define-history-event marker-recorded-event
     (decision-task-completed-event-id
-     (details :type string-32k)
-     (marker-name :type string-256 :required t)))
+     (details #'deserialize-object)
+     (marker-name #'deserialize-keyword)))
 
 
 ;; Timer events -------------------------------------------------------------------------
 
 
 (define-history-event timer-started-event
-    ((control :type string-32k)
+    ((control #'deserialize-object)
      decision-task-completed-event-id
-     (start-to-fire-timeout :type timeout :required t)
+     start-to-fire-timeout
      timer-id)
   (%schedule-task :timer timer-id)
   (%start-task :timer timer-id))
 
 
 (define-history-event start-timer-failed-event
-    ((cause :type (member :timer-id-already-in-use) :required t)
+    (cause
      decision-task-completed-event-id
      timer-id)
   (%schedule-task :timer timer-id)
@@ -509,7 +467,7 @@
 
 
 (define-history-event cancel-timer-failed-event
-    ((cause :type (member :timer-id-unknown) :required t)
+    (cause
      timer-id))
 
 
@@ -517,38 +475,23 @@
 
 
 (define-history-event start-child-workflow-execution-initiated-event
-    ((child-policy :type child-policy)
-     (control :type string-32k)
+    (child-policy
+     (control #'deserialize-object)
      decision-task-completed-event-id
-     (execution-start-to-close-timeout :type timeout-or-none)
-     (input :type string-32k)
+     execution-start-to-close-timeout
+     (input #'deserialize-object)
      tag-list
-     (task-list :type task-list)
-     (task-start-to-close-timeout :type timeout-or-none)
+     task-list
+     task-start-to-close-timeout
      workflow-id
      workflow-type
      workflow-execution)
   (%schedule-task :child-workflow workflow-execution))
 
 
-(deftype start-child-workflow-execution-failed-cause ()
-  '(member
-    :workflow-type-does-not-exist
-    :workflow-type-deprecated
-    :open-children-limit-exceeded
-    :open-workflows-limit-exceeded
-    :child-creation-rate-exceeded
-    :workflow-already-running
-    :default-execution-start-to-close-timeout-undefined
-    :default-task-list-undefined
-    :default-task-start-to-close-timeout-undefined
-    :default-child-policy-undefined
-    :operation-not-permitted))
-
-
 (define-history-event start-child-workflow-execution-failed-event
-    ((cause :type start-child-workflow-execution-failed-cause :required t)
-     (control :type string-32k)
+    (cause
+     (control #'deserialize-object)
      decision-task-completed-event-id
      initiated-event-id
      workflow-id
@@ -566,7 +509,7 @@
 
 (define-history-event child-workflow-execution-completed-event
     (initiated-event-id
-     (result :type string-32k)
+     (result #'deserialize-object)
      started-event-id
      workflow-execution
      workflow-type)
@@ -574,9 +517,9 @@
 
 
 (define-history-event child-workflow-execution-failed-event
-    ((details :type string-32k)
+    ((details #'deserialize-object)
      initiated-event-id
-     (reason :type string-256)
+     (reason #'deserialize-keyword)
      started-event-id
      workflow-execution
      workflow-type)
@@ -586,14 +529,14 @@
 (define-history-event child-workflow-execution-timed-out-event
     (initiated-event-id
      started-event-id
-     (timeout-type :type (member :start-to-close) :required t)
+     timeout-type
      workflow-execution
      workflow-type)
   (%close-task :child-workflow workflow-execution))
 
 
 (define-history-event child-workflow-execution-canceled-event
-    ((details :type string-32k)
+    ((details #'deserialize-object)
      initiated-event-id
      started-event-id
      workflow-execution
@@ -613,11 +556,11 @@
 
 
 (define-history-event signal-external-workflow-execution-initiated-event
-    ((control :type string-32k)
+    ((control #'deserialize-object)
      decision-task-completed-event-id
-     (input :type string-32k)
-     (run-id :type run-id)
-     (signal-name :type string-256 :required t)
+     (input #'deserialize-object)
+     run-id
+     (signal-name #'deserialize-keyword)
      workflow-id))
 
 
@@ -627,18 +570,18 @@
 
 
 (define-history-event signal-external-workflow-execution-failed-event
-    ((cause :type (member :unknown-external-workflow-execution) :required t)
-     (control :type string-32k)
+    (cause
+     (control #'deserialize-object)
      decision-task-completed-event-id
      initiated-event-id
-     (run-id :type run-id)
+     run-id
      workflow-id))
 
 
 (define-history-event request-cancel-external-workflow-execution-initiated-event
-    ((control :type string-32k)
+    ((control #'deserialize-object)
      decision-task-completed-event-id
-     (run-id :type run-id)
+     run-id
      workflow-id))
 
 
@@ -648,9 +591,9 @@
 
 
 (define-history-event request-cancel-external-workflow-execution-failed-event
-    ((cause :type (member :unknown-external-workflow-execution) :required t)
-     (control :type string-32k)
+    (cause
+     (control #'deserialize-object)
      decision-task-completed-event-id
      initiated-event-id
-     (run-id :type run-id)
+     run-id
      workflow-id))

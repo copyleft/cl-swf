@@ -6,6 +6,30 @@
 
 ;;; Common worker ----------------------------------------------------------------------------------
 
+(defclass task-type ()
+  ((name :initarg :name :reader task-type-name)
+   (options :initarg :options :reader task-type-options)
+   (function :initarg :function :reader task-type-function)))
+
+(defclass workflow-type (task-type) ())
+(defclass activity-type (task-type) ())
+
+(defgeneric ensure-task-type (task-type))
+
+(defmethod ensure-task-type ((workflow-type workflow-type))
+  (handler-case
+      (apply #'swf::register-workflow-type (task-type-options workflow-type))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+(defmethod ensure-task-type ((activity-type activity-type))
+  (handler-case
+      (apply #'swf::register-activity-type (task-type-options activity-type))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
 
 (defvar *worker*)
 
@@ -81,81 +105,41 @@
                                            :workflow-id (aget task :workflow-execution :workflow-id))))))
 
 
-(defun find-activity-in-package (package name version)
-  (let ((symbol (find-symbol name package)))
-    (when symbol
-      (when (subtypep symbol 'activity)
-        (let ((activity (make-instance symbol)))
-          (when (and (equal name (activity-name activity))
-                     (equal version (activity-version activity)))
-            activity))))))
+(defun find-task-type-in-package (package type-spec)
+  (let ((task-type (get (find-symbol (aget type-spec :name) package) 'task-type)))
+    (when (and task-type
+               (equal (aget type-spec :version) (getf (task-type-options task-type) :version)))
+      task-type)))
 
 
-(defun find-activity (name &optional version)
-  (etypecase name
+(defun find-task-type (x)
+  (etypecase x
     (symbol
-     (when (subtypep name 'activity)
-       (make-instance name)))
-    (string
+     (get x 'task-type))
+    (cons
      (some (lambda (package)
-             (find-activity-in-package package name version))
+             (find-task-type-in-package package x))
            (worker-packages *worker*)))))
 
 
-(defun ensure-activity-type (activity)
-  (handler-case
-      (apply #'swf::register-activity-type (slot-value activity 'options))
-    (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
-
-
-(defun ensure-activity-types (worker)
+(defun worker-ensure-task-types (worker)
   (dolist (package (worker-packages worker))
     (do-symbols (symbol package)
-      (when (typep symbol 'activity)
-        (ensure-activity-type (find-class symbol))))))
+      (let ((task-type (get symbol 'task-type)))
+        (when task-type
+          (ensure-task-type task-type))))))
 
 
-(defun find-workflow-in-package (package name version)
-  (let ((symbol (find-symbol name package)))
-    (when symbol
-      (when (subtypep symbol 'workflow)
-        (let ((workflow (make-instance symbol)))
-          (when (and (equal name (workflow-name workflow))
-                     (equal version (workflow-version workflow)))
-            workflow))))))
+(defun find-workflow-type (x)
+  (let ((workflow-type (find-task-type x)))
+    (when (typep workflow-type 'workflow-type)
+      workflow-type)))
 
 
-(defun find-workflow (name &optional version)
-  (etypecase name
-    (symbol
-     (when (subtypep name 'workflow)
-       (make-instance name)))
-    (string
-     (some (lambda (package)
-             (find-workflow-in-package package name version))
-           (worker-packages *worker*)))))
-
-
-(defun ensure-workflow-type (workflow)
-  (handler-case
-      (apply #'swf::register-workflow-type (slot-value workflow 'options))
-    (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
-
-
-(defun ensure-workflow-types (worker)
-  (dolist (package (worker-packages worker))
-    (do-symbols (symbol package)
-      (when (typep symbol 'workflow)
-        (ensure-workflow-type (find-class symbol))))))
-
-
-(defun worker-ensure-types (worker)
-  (ensure-activity-types worker)
-  (ensure-workflow-types worker))
+(defun find-activity-type (x)
+  (let ((activity-type (find-task-type x)))
+    (when (typep activity-type 'activity-type)
+      activity-type)))
 
 
 ;;; Defining workflows ----------------------------------------------------------------------------
@@ -193,21 +177,21 @@
                           :workflow-type (alist :name ,string-name :version ,string-version)))
        (defun ,decider-function (&key ,@workflow-args)
          ,@body)
-       (defclass ,name (workflow)
-         ((name :initform ,string-name)
-          (version :initform ,string-version)
-          (function :initform #',decider-function)
-          (options :initform (list :name ,string-name
-                                   :version ,string-version
-                                   :default-child-policy
-                                   ,default-child-policy
-                                   :default-execution-start-to-close-timeout
-                                   ,default-execution-start-to-close-timeout
-                                   :default-task-list
-                                   ,default-task-list
-                                   :default-task-start-to-close-timeout
-                                   ,default-task-start-to-close-timeout
-                                   :description ,description)))))))
+       (setf (get ',name 'task-type)
+             (make-instance 'workflow-type
+                            :name ',name
+                            :function #',decider-function
+                            :options (list :name ,string-name
+                                           :version ,string-version
+                                           :default-child-policy
+                                           ,default-child-policy
+                                           :default-execution-start-to-close-timeout
+                                           ,default-execution-start-to-close-timeout
+                                           :default-task-list
+                                           ,default-task-list
+                                           :default-task-start-to-close-timeout
+                                           ,default-task-start-to-close-timeout
+                                           :description ,description))))))
 
 
 (defun %start-workflow (&key child-policy
@@ -278,23 +262,23 @@
                                  :task-list task-list))
        (defun ,activity-function (&key ,@activity-args)
          ,@body)
-       (defclass ,name (activity)
-         ((name :initform ,string-name)
-          (version :initform ,string-version)
-          (function :initform #',activity-function)
-          (options :initform (list :name ,string-name
-                                   :version ,string-version
-                                   :default-task-heartbeat-timeout
-                                   ,default-task-heartbeat-timeout
-                                   :default-task-list
-                                   ',default-task-list
-                                   :default-task-schedule-to-close-timeout
-                                   ,default-task-schedule-to-close-timeout
-                                   :default-task-schedule-to-start-timeout
-                                   ,default-task-schedule-to-start-timeout
-                                   :default-task-start-to-close-timeout
-                                   ,default-task-start-to-close-timeout
-                                   :description ,description)))))))
+       (setf (get ',name 'task-type)
+             (make-instance 'activity-type
+                            :name ',name
+                            :function #',activity-function
+                            :options (list :name ,string-name
+                                           :version ,string-version
+                                           :default-task-heartbeat-timeout
+                                           ,default-task-heartbeat-timeout
+                                           :default-task-list
+                                           ',default-task-list
+                                           :default-task-schedule-to-close-timeout
+                                           ,default-task-schedule-to-close-timeout
+                                           :default-task-schedule-to-start-timeout
+                                           ,default-task-schedule-to-start-timeout
+                                           :default-task-start-to-close-timeout
+                                           ,default-task-start-to-close-timeout
+                                           :description ,description))))))
 
 
 ;;; Handling workflow tasks ------------------------------------------------------------------------
@@ -308,10 +292,9 @@
 
 (defun run-decision-task (task)
   (let* ((workflow-type (aget task :workflow-type))
-         (workflow (or (find-workflow (aget workflow-type :name)
-                                      (aget workflow-type :version))
+         (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
-         (decider-function (workflow-function workflow)))
+         (decider-function (task-type-function workflow)))
     (let ((*wx* (make-workflow-execution-info (aget task :events)))
           (*decisions* nil))
       (apply decider-function (deserialize-object (event-input (get-event (task-started-event-id *wx*)))))
@@ -377,11 +360,10 @@
 (defun compute-activity-task-value (task)
   (restart-case
       (let* ((activity-type (aget task :activity-type))
-             (activity (or (find-activity (aget activity-type :name)
-                                          (aget activity-type :version))
+             (activity (or (find-activity-type activity-type)
                            (error "Could not find activity type ~S." activity-type)))
              (input (deserialize-object (aget task :input))))
-        (apply (activity-function activity) input))
+        (apply (task-type-function activity) input))
     (use-value (&rest new-value)
       :report "Return something else."
       :interactive read-new-value
