@@ -2,6 +2,161 @@
 
 (declaim (optimize (speed 0) (debug 3) (safety 3) (space 0)))
 
+;; TODO: Check for duplicate workflow and activties types in a worker
+
+;;; Common worker ----------------------------------------------------------------------------------
+
+
+(defvar *worker*)
+
+
+(defclass worker ()
+  ((service :initarg :service
+            :initform (swf::service)
+            :reader worker-service)
+   (task-list :initarg :task-list
+              :initform "default"
+              :reader worker-task-list)
+   (packages :initarg :packages
+             :initform (list *package*)
+             :reader worker-packages)))
+
+
+(defun worker-start (worker type)
+  (loop (worker-handle-next-task worker type)))
+
+
+(defun worker-start-thread (worker type)
+  (sb-thread:make-thread (lambda (worker type)
+                           (worker-start worker type))
+                         :name (format nil "~S worker for ~S" type worker)
+                         :arguments (list worker type)))
+
+
+(defun worker-look-for-task (worker type)
+  (let ((swf::*service* (worker-service worker)))
+    (let ((identity (princ-to-string sb-thread:*current-thread*)))
+      (ecase type
+        (:workflow
+         (let ((response (swf::poll-for-decision-task :all-pages t
+                                                      :identity identity
+                                                      :task-list (worker-task-list worker))))
+           (when (aget response :events)
+             response)))
+        (:activity
+           (let ((response (swf::poll-for-activity-task :identity identity
+                                                        :task-list (worker-task-list worker))))
+             (when (aget response :task-token)
+               response)))))))
+
+
+(defun worker-handle-next-task (worker type)
+  (with-error-handling
+    (with-simple-restart (carry-on "Stop handle-next-task.")
+      (let ((task (worker-look-for-task worker type)))
+        (when task
+          (with-simple-restart (carry-on "Stop handling this ~A task." type)
+            (worker-handle-task worker type task)))))))
+
+
+(defun worker-handle-task (worker type task)
+  (let ((*worker* worker)
+        (swf::*service* (worker-service worker)))
+    (restart-case
+        (destructuring-bind (function &rest args)
+            (ecase type
+              (:workflow
+               (worker-compute-workflow-response task))
+              (:activity
+               (worker-compute-activity-response task)))
+          (apply function args))
+      (retry ()
+        :report "Retry handle task"
+        (worker-handle-task worker type task))
+      (terminate-workflow ()
+        :report "Terminate this workflow exectuion and all child workflows."
+        (swf::terminate-workflow-execution :child-policy :terminate
+                                           :details "Terminated by restart."
+                                           :run-id (aget task :workflow-execution :run-id)
+                                           :workflow-id (aget task :workflow-execution :workflow-id))))))
+
+
+(defun find-activity-in-package (package name version)
+  (let ((symbol (find-symbol name package)))
+    (when symbol
+      (when (subtypep symbol 'activity)
+        (let ((activity (make-instance symbol)))
+          (when (and (equal name (activity-name activity))
+                     (equal version (activity-version activity)))
+            activity))))))
+
+
+(defun find-activity (name &optional version)
+  (etypecase name
+    (symbol
+     (when (subtypep name 'activity)
+       (make-instance name)))
+    (string
+     (some (lambda (package)
+             (find-activity-in-package package name version))
+           (worker-packages *worker*)))))
+
+
+(defun ensure-activity-type (activity)
+  (handler-case
+      (apply #'swf::register-activity-type (slot-value activity 'options))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+
+(defun ensure-activity-types (worker)
+  (dolist (package (worker-packages worker))
+    (do-symbols (symbol package)
+      (when (typep symbol 'activity)
+        (ensure-activity-type (find-class symbol))))))
+
+
+(defun find-workflow-in-package (package name version)
+  (let ((symbol (find-symbol name package)))
+    (when symbol
+      (when (subtypep symbol 'workflow)
+        (let ((workflow (make-instance symbol)))
+          (when (and (equal name (workflow-name workflow))
+                     (equal version (workflow-version workflow)))
+            workflow))))))
+
+
+(defun find-workflow (name &optional version)
+  (etypecase name
+    (symbol
+     (when (subtypep name 'workflow)
+       (make-instance name)))
+    (string
+     (some (lambda (package)
+             (find-workflow-in-package package name version))
+           (worker-packages *worker*)))))
+
+
+(defun ensure-workflow-type (workflow)
+  (handler-case
+      (apply #'swf::register-workflow-type (slot-value workflow 'options))
+    (swf::type-already-exists-error ()
+      ;; TODO check if options are equal
+      )))
+
+
+(defun ensure-workflow-types (worker)
+  (dolist (package (worker-packages worker))
+    (do-symbols (symbol package)
+      (when (typep symbol 'workflow)
+        (ensure-workflow-type (find-class symbol))))))
+
+
+(defun worker-ensure-types (worker)
+  (ensure-activity-types worker)
+  (ensure-workflow-types worker))
+
 
 ;;; Defining workflows ----------------------------------------------------------------------------
 
@@ -37,18 +192,22 @@
                           :workflow-id workflow-id
                           :workflow-type (alist :name ,string-name :version ,string-version)))
        (defun ,decider-function (&key ,@workflow-args)
-                          ,@body)
-       (setf (get ',name 'workflow)
-             (alist :name ,string-name
-                    :version ,string-version
-                    :decider #',decider-function
-                    :options (list :name ,string-name
+         ,@body)
+       (defclass ,name (workflow)
+         ((name :initform ,string-name)
+          (version :initform ,string-version)
+          (function :initform #',decider-function)
+          (options :initform (list :name ,string-name
                                    :version ,string-version
-                                   :default-child-policy ,default-child-policy
-                                   :default-execution-start-to-close-timeout ,default-execution-start-to-close-timeout
-                                   :default-task-list ,default-task-list
-                                   :default-task-start-to-close-timeout ,default-task-start-to-close-timeout
-                                   :description ,description))))))
+                                   :default-child-policy
+                                   ,default-child-policy
+                                   :default-execution-start-to-close-timeout
+                                   ,default-execution-start-to-close-timeout
+                                   :default-task-list
+                                   ,default-task-list
+                                   :default-task-start-to-close-timeout
+                                   ,default-task-start-to-close-timeout
+                                   :description ,description)))))))
 
 
 (defun %start-workflow (&key child-policy
@@ -81,42 +240,7 @@
               (error err))))))
 
 
-(defun find-workflow-in-package (package name version)
-  (let ((symbol (find-symbol name package)))
-    (when symbol
-      (let ((workflow (get symbol 'workflow)))
-        (when workflow
-          (when (and (equal name (aget workflow :name))
-                     (equal version (aget workflow :version)))
-            workflow))))))
-
-
-(defun find-workflow (packages name version)
-  (let ((workflow (some (lambda (package)
-                          (find-workflow-in-package package name version))
-                        packages)))
-    (or workflow
-        (error "Could not find workflow ~A/~A in ~S" name version packages))))
-
-
-(defun ensure-workflow-type (workflow)
-  (handler-case
-      (apply #'swf::register-workflow-type (aget workflow :options))
-    (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
-
-
-(defun ensure-workflow-types (&rest packages)
-  (dolist (package packages)
-    (do-symbols (symbol package)
-      (let ((workflow (get symbol 'workflow)))
-        (when workflow
-          (ensure-workflow-type workflow))))))
-
-
-
-;;; Defining activitys ----------------------------------------------------------------------------
+;;; Defining activities ----------------------------------------------------------------------------
 
 
 (defmacro define-activity (name
@@ -154,171 +278,47 @@
                                  :task-list task-list))
        (defun ,activity-function (&key ,@activity-args)
          ,@body)
-       (setf (get ',name 'activity)
-             (alist :name ,string-name
-                    :version ,string-version
-                    :function #',activity-function
-                    :options (list :name ,string-name
+       (defclass ,name (activity)
+         ((name :initform ,string-name)
+          (version :initform ,string-version)
+          (function :initform #',activity-function)
+          (options :initform (list :name ,string-name
                                    :version ,string-version
-                                   :default-task-heartbeat-timeout ,default-task-heartbeat-timeout
-                                   :default-task-list ',default-task-list
-                                   :default-task-schedule-to-close-timeout ,default-task-schedule-to-close-timeout
-                                   :default-task-schedule-to-start-timeout ,default-task-schedule-to-start-timeout
-                                   :default-task-start-to-close-timeout ,default-task-start-to-close-timeout
-                                   :description ,description))))))
+                                   :default-task-heartbeat-timeout
+                                   ,default-task-heartbeat-timeout
+                                   :default-task-list
+                                   ',default-task-list
+                                   :default-task-schedule-to-close-timeout
+                                   ,default-task-schedule-to-close-timeout
+                                   :default-task-schedule-to-start-timeout
+                                   ,default-task-schedule-to-start-timeout
+                                   :default-task-start-to-close-timeout
+                                   ,default-task-start-to-close-timeout
+                                   :description ,description)))))))
 
 
-(defun find-activity-in-package (package name version)
-  (let ((symbol (find-symbol name package)))
-    (when symbol
-      (let ((activity (get symbol 'activity)))
-        (when activity
-          (when (and (equal name (aget activity :name))
-                     (equal version (aget activity :version)))
-            activity))))))
+;;; Handling workflow tasks ------------------------------------------------------------------------
 
 
-(defun find-activity (packages name version)
-  (let ((activity (some (lambda (package)
-                          (find-activity-in-package package name version))
-                        packages)))
-    (or activity
-        (error "Could not find activity ~A/~A in ~S" name version packages))))
-
-
-(defun ensure-activity-type (activity)
-  (handler-case
-      (apply #'swf::register-activity-type (aget activity :options))
-    (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
-
-
-(defun ensure-activity-types (&rest packages)
-  (dolist (package packages)
-    (do-symbols (symbol package)
-      (let ((activity (get symbol 'activity)))
-        (when activity
-          (ensure-activity-type activity))))))
-
-
-
-;;; Common worker ----------------------------------------------------------------------------------
-
-
-(defclass worker ()
-  ((service :initarg :service
-            :initform (swf::service)
-            :reader worker-service)
-   (task-list :initarg :task-list
-              :initform "default"
-              :reader worker-task-list)
-   (packages :initarg :packages
-             :initform (list *package*)
-             :reader worker-packages)))
-
-
-(defgeneric worker-start (worker)
-  (:method ((worker worker))
-    (loop (worker-handle-next-task worker))))
-
-
-(defgeneric worker-start-thread (worker)
-  (:method ((worker worker))
-    (sb-thread:make-thread (lambda (worker)
-                             (worker-start worker))
-                           :name (format nil "Worker for ~S" worker)
-                           :arguments (list worker))))
-
-
-(defgeneric worker-look-for-task (worker))
-(defmethod worker-look-for-task :around (worker)
-  (let ((swf::*service* (worker-service worker)))
-    (call-next-method)))
-
-
-(defgeneric worker-handle-next-task (worker)
-  (:method ((worker worker))
-    (with-error-handling
-      (with-simple-restart (carry-on "Stop handle-next-task.")
-        (let ((task (worker-look-for-task worker)))
-          (when task
-            ;;(break "Handling task ~S" worker)
-            (with-simple-restart (carry-on "Stop handling this task.")
-              (worker-handle-task worker task))))))))
-
-
-(defgeneric worker-handle-task (worker task)
-  (:method ((worker worker) task)
-    (let ((swf::*service* (worker-service worker)))
-      (restart-case
-          (destructuring-bind (function &rest args)
-              (worker-compute-task-response worker task)
-            (apply function args))
-        (retry ()
-          :report "Retry handle task"
-          (worker-handle-task worker task))
-        (terminate-workflow ()
-          :report "Terminate this workflow exectuion and all child workflows."
-          (swf::terminate-workflow-execution :child-policy :terminate
-                                             :details "Terminated by restart."
-                                             :run-id (aget task :workflow-execution :run-id)
-                                             :workflow-id (aget task :workflow-execution :workflow-id)))))))
-
-
-(defgeneric worker-compute-task-response (worker task))
-
-
-
-;;; Workflow worker --------------------------------------------------------------------------------
-
-
-(defclass workflow-worker (worker)
-  ())
-
-;; TODO: Check for duplicate workflows in initialize-instance :after
-
-
-(defmethod worker-look-for-task ((wfw workflow-worker))
-  (let ((res (swf::poll-for-decision-task :all-pages t
-                                          :identity (princ-to-string sb-thread:*current-thread*)
-                                          :task-list (worker-task-list wfw))))
-    (when (aget res :events)
-      res)))
-
-
-(defmethod worker-compute-task-response ((wfw workflow-worker) task)
+(defun worker-compute-workflow-response (task)
   (list #'swf::respond-decision-task-completed
         :task-token (aget task :task-token)
-        :decisions (run-decision-task wfw task)))
+        :decisions (run-decision-task task)))
 
 
-(defun run-decision-task (wfw task)
+(defun run-decision-task (task)
   (let* ((workflow-type (aget task :workflow-type))
-         (workflow (find-workflow (worker-packages wfw)
-                                  (aget workflow-type :name)
-                                  (aget workflow-type :version)))
-         (decider-function (aget workflow :decider)))
+         (workflow (or (find-workflow (aget workflow-type :name)
+                                      (aget workflow-type :version))
+                       (error "Could find workflow type ~S." workflow-type)))
+         (decider-function (workflow-function workflow)))
     (let ((*wx* (make-workflow-execution-info (aget task :events)))
           (*decisions* nil))
       (apply decider-function (deserialize-object (event-input (get-event (task-started-event-id *wx*)))))
       (nreverse *decisions*))))
 
 
-;;; Activity worker --------------------------------------------------------------------------------
-
-
-(defclass activity-worker (worker)
-  ())
-
-;; TODO: Check for duplicate activities in initialize-instance :after
-
-
-(defmethod worker-look-for-task ((aw activity-worker))
-  (let ((res (swf::poll-for-activity-task :identity (princ-to-string sb-thread:*current-thread*)
-                                          :task-list (worker-task-list aw))))
-    (when (aget res :task-token)
-      res)))
+;;; Handling activity tasks ------------------------------------------------------------------------
 
 
 (define-condition activity-error (error)
@@ -345,14 +345,14 @@
   value)
 
 
-(defmethod worker-compute-task-response ((aw activity-worker) task)
+(defun worker-compute-activity-response (task)
   (handler-case
       (let ((*default-activity-error-reason* :error)
             (*default-activity-error-details* nil))
         (let (error)
           (restart-case
               (handler-bind ((error (lambda (e) (setf error e))))
-                (let ((value (compute-activity-task-value aw task)))
+                (let ((value (compute-activity-task-value task)))
                   (list #'swf::respond-activity-task-completed
                         :result (serialize-object value)
                         :task-token (aget task :task-token))))
@@ -374,14 +374,14 @@
   (eval (read)))
 
 
-(defun compute-activity-task-value (aw task)
+(defun compute-activity-task-value (task)
   (restart-case
       (let* ((activity-type (aget task :activity-type))
-             (activity (find-activity (worker-packages aw)
-                                      (aget activity-type :name)
-                                      (aget activity-type :version)))
+             (activity (or (find-activity (aget activity-type :name)
+                                          (aget activity-type :version))
+                           (error "Could not find activity type ~S." activity-type)))
              (input (deserialize-object (aget task :input))))
-        (apply (aget activity :function) input))
+        (apply (activity-function activity) input))
     (use-value (&rest new-value)
       :report "Return something else."
       :interactive read-new-value

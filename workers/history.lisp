@@ -29,19 +29,6 @@
 (defvar *current-event-id*)
 
 
-(defclass task ()
-  ((state :initarg :state
-          :initform nil)
-   (scheduled-event-id :initarg :scheduled-event-id
-                       :initform nil
-                       :reader task-scheduled-event-id)
-   (started-event-id :initform nil
-                     :reader task-started-event-id)
-   (closed-event-id :initform nil
-                    :reader task-closed-event-id)
-   (request-cancel-event-ids :initform nil
-                             :reader task-request-cancel-event-ids)))
-
 (defmethod task-scheduled-event (task)
   (when (task-scheduled-event-id task)
     (get-event (task-scheduled-event-id task))))
@@ -53,10 +40,6 @@
 (defmethod task-closed-event (task)
   (when (task-closed-event-id task)
     (get-event (task-closed-event-id task))))
-
-
-(defclass activity (task)
-  ())
 
 
 (defclass workflow-execution-info (task)
