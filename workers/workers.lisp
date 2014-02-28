@@ -297,7 +297,7 @@
          (decider-function (task-type-function workflow)))
     (let ((*wx* (make-workflow-execution-info (aget task :events)))
           (*decisions* nil))
-      (apply decider-function (deserialize-object (event-input (get-event (task-started-event-id *wx*)))))
+      (apply decider-function (event-input (get-event (task-started-event-id *wx*))))
       (nreverse *decisions*))))
 
 
