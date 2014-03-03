@@ -333,14 +333,11 @@
     (%state :scheduled)))
 
 
-(define-history-event schedule-activity-task-failed-event
+(define-history-event schedule-activity-task-failed-event ; TODO
     (activity-id
      activity-type
      cause
-     decision-task-completed-event-id)
-  (with-new-task (activity-task activity-id)
-    (%close)
-    (%state :schedule-failed)))
+     decision-task-completed-event-id))
 
 
 (define-history-event activity-task-started-event
@@ -397,7 +394,7 @@
     (%request-cancel)))
 
 
-(define-history-event request-cancel-activity-task-failed-event
+(define-history-event request-cancel-activity-task-failed-event ; TODO
     (activity-id
      cause
      decision-task-completed-event-id))
@@ -406,14 +403,14 @@
 ;; Misc events -------------------------------------------------------------------------
 
 
-(define-history-event workflow-execution-signaled-event
+(define-history-event workflow-execution-signaled-event ; TODO
     (external-initiated-event-id
      external-workflow-execution
      (input deserialize-object)
      (signal-name deserialize-keyword)))
 
 
-(define-history-event marker-recorded-event
+(define-history-event marker-recorded-event ; TODO
     (decision-task-completed-event-id
      (details deserialize-object)
      (marker-name deserialize-keyword)))
@@ -432,13 +429,10 @@
     (%state :started)))
 
 
-(define-history-event start-timer-failed-event
+(define-history-event start-timer-failed-event ; TODO
     (cause
      decision-task-completed-event-id
-     timer-id)
-  (with-new-task (timer-task timer-id)
-    (%close)
-    (%state :failed)))
+     timer-id))
 
 
 (define-history-event timer-fired-event
@@ -458,7 +452,7 @@
     (%state :canceled)))
 
 
-(define-history-event cancel-timer-failed-event
+(define-history-event cancel-timer-failed-event ; TODO
     (cause
      timer-id))
 
@@ -483,17 +477,14 @@
     (%state :scheduled)))
 
 
-(define-history-event start-child-workflow-execution-failed-event
+(define-history-event start-child-workflow-execution-failed-event ; TODO
     (cause
      (control deserialize-object)
      decision-task-completed-event-id
      initiated-event-id
      workflow-id
      workflow-type
-     workflow-execution)
-  (with-new-task (child-workflow workflow-execution)
-    (%close)
-    (%state :schedule-failed)))
+     workflow-execution))
 
 
 (define-history-event child-workflow-execution-started-event
@@ -563,7 +554,7 @@
 ;; External workflow ----------------------------------------------------------------------
 
 
-(define-history-event signal-external-workflow-execution-initiated-event
+(define-history-event signal-external-workflow-execution-initiated-event ; TODO
     ((control deserialize-object)
      decision-task-completed-event-id
      (input deserialize-object)
@@ -572,12 +563,12 @@
      workflow-id))
 
 
-(define-history-event external-workflow-execution-signaled-event
+(define-history-event external-workflow-execution-signaled-event ; TODO
     (initiated-event-id
      workflow-execution))
 
 
-(define-history-event signal-external-workflow-execution-failed-event
+(define-history-event signal-external-workflow-execution-failed-event ; TODO
     (cause
      (control deserialize-object)
      decision-task-completed-event-id
@@ -586,19 +577,19 @@
      workflow-id))
 
 
-(define-history-event request-cancel-external-workflow-execution-initiated-event
+(define-history-event request-cancel-external-workflow-execution-initiated-event ; TODO
     ((control deserialize-object)
      decision-task-completed-event-id
      run-id
      workflow-id))
 
 
-(define-history-event external-workflow-execution-cancel-requested-event
+(define-history-event external-workflow-execution-cancel-requested-event ; TODO
     (initiated-event-id
      workflow-execution))
 
 
-(define-history-event request-cancel-external-workflow-execution-failed-event
+(define-history-event request-cancel-external-workflow-execution-failed-event ; TODO
     (cause
      (control deserialize-object)
      decision-task-completed-event-id
