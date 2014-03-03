@@ -267,10 +267,12 @@
          (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
          (decider-function (task-type-function workflow)))
-    (let ((*wx* (make-workflow-execution-info (aget task :events)))
-          (*decisions* nil))
+    (let ((*wx* (make-workflow-execution-info
+                 :events (aget task :events)
+                 :previous-started-event-id (aget task :previous-started-event-id)
+                 :started-event-id (aget task :started-event-id))))
       (apply decider-function (event-input (get-event (task-started-event-id *wx*))))
-      (mapcar #'transform-decision (nreverse *decisions*)))))
+      (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions))))))
 
 
 ;;; Handling activity tasks ------------------------------------------------------------------------

@@ -32,7 +32,11 @@
 
 (defclass task ()
   ((state :initarg :state
-          :initform nil)
+          :initform nil
+          :reader task-state)
+   (previous-state :initarg :previous-state
+                   :initform nil
+                   :reader task-previous-state)
    (scheduled-event-id :initarg :scheduled-event-id
                        :initform nil
                        :reader task-scheduled-event-id)
@@ -65,41 +69,22 @@
 
 
 (defclass workflow-execution-info (workflow-task)
-  (;; WorkflowExecutionInfo:
-   (cancel-requested :initarg :cancel-requested)
-   (close-status :initarg :close-status)
-   (close-timestamp :initarg :close-timestamp)
-   (run-id :initarg :run-id)
-   (workflow-id :initarg :workflow-id)
-   (execution-status :initarg :execution-status)
-   (parent-run-id :initarg :parent-run-id)
-   (parent-workflow-id :initarg :parent-workflow-id)
-   (tag-list :initarg :tag-list)
-   (workflow-type :initarg :workflow-type)
-   ;; WorkflowExecutionConfiguration:
-   (child-policy :initarg :child-policy)
-   (execution-start-to-close-timeout :initarg :execution-start-to-close-timeout)
-   (task-list :initarg :task-list)
-   (task-start-to-close-timeout :initarg :task-start-to-close-timeout)
-   ;; PollForDecisionTask:
+  ((decisions :initform nil)
    (events :initarg :events)
    (previous-started-event-id :initarg :previous-started-event-id)
-   (started-event-id :initform :started-event-id)
-   ;; Derived from events:
-   (input :initarg :input)
-   (open-activity-tasks :initarg :open-activity-tasks)
-   (open-child-workflow-executions :initarg :open-child-workflow-executions)
-   (open-decision-tasks :initarg :open-decision-tasks)
-   (open-timers :initarg :open-timers)
+   (started-event-id :initarg :started-event-id)
    (activity-tasks :initform (make-hash-table :test #'equal))
    (decision-tasks :initform (make-hash-table))
    (timer-tasks :initform (make-hash-table :test #'equal))
    (child-workflow-tasks :initform (make-hash-table :test #'equal))))
 
 
-(defun make-workflow-execution-info (events)
+(defun make-workflow-execution-info (&key events previous-started-event-id
+                                       started-event-id)
   (let ((*wx* (make-instance 'workflow-execution-info
-                             :events (map 'vector #'make-history-event events))))
+                             :events (map 'vector #'make-history-event events)
+                             :previous-started-event-id previous-started-event-id
+                             :started-event-id started-event-id)))
     (map nil #'update-history-with-event (slot-value *wx* 'events))
     *wx*))
 
@@ -145,7 +130,9 @@
      ,@body))
 
 (defun %state (new-state)
-  (setf (slot-value *task* 'state) new-state))
+  (setf (slot-value *task* 'state) new-state)
+  (when (< *current-event-id* (slot-value *wx* 'previous-started-event-id))
+    (setf (slot-value *task* 'previous-state) new-state)))
 
 (defun %schedule ()
   (slot-value *task* 'scheduled-event-id) *current-event-id*)

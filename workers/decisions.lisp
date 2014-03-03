@@ -1,12 +1,15 @@
 (in-package #:swf-workers)
 
-(defvar *decisions*)
-(defvar *decision*)
+
+(defun add-decision (decision)
+  (push decision (slot-value *wx* 'decisions))
+  decision)
+
 
 (defclass decision () ())
 (defgeneric transform-decision (decision))
 
-(defmacro define-decision (name slots &body body)
+(defmacro define-decision (name slots)
   (let ((slots (mapcar #'normalize-slot slots)))
     `(progn
        (defclass ,name (decision)
@@ -16,7 +19,7 @@
                           :initform nil
                           :reader ,(intern (format nil "DECISION-~A" slot-name)))))
        (defun ,name (&key ,@(mapcar #'car slots))
-         (update-history-with-decision
+         (add-decision
           (make-instance ',name
                          ,@(loop for (slot-name) in slots
                                  collect (intern (symbol-name slot-name) :keyword)
@@ -26,13 +29,7 @@
                 ,(intern (format nil "~A-DECISION-ATTRIBUTES" name) :keyword)
                 (list ,@(loop for (slot-name transformer) in slots collect
                               `(cons ,(intern (symbol-name slot-name) :keyword)
-                                     (,transformer (slot-value decision ',slot-name)))))))
-       (defmethod update-history-with-decision ((*decision* ,name))
-         (push *decision* *decisions*)
-         (with-slots (,@(mapcar #'car slots))
-             *decision*
-           ,@body)
-         *decision*))))
+                                     (,transformer (slot-value decision ',slot-name))))))))))
 
 
 (define-decision cancel-timer
