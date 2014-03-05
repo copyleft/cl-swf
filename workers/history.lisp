@@ -27,8 +27,7 @@
 
 (defvar *wx*)
 
-(defvar *current-event-id*)
-
+(defvar *current-event*)
 
 (defclass task ()
   ((state :initarg :state
@@ -37,15 +36,15 @@
    (previous-state :initarg :previous-state
                    :initform nil
                    :reader task-previous-state)
-   (scheduled-event-id :initarg :scheduled-event-id
+   (scheduled-event :initarg :scheduled-event
                        :initform nil
-                       :reader task-scheduled-event-id)
-   (started-event-id :initform nil
-                     :reader task-started-event-id)
-   (closed-event-id :initform nil
-                    :reader task-closed-event-id)
-   (request-cancel-event-ids :initform nil
-                             :reader task-request-cancel-event-ids)))
+                       :reader task-scheduled-event)
+   (started-event :initform nil
+                     :reader task-started-event)
+   (closed-event :initform nil
+                    :reader task-closed-event)
+   (request-cancel-events :initform nil
+                             :reader task-request-cancel-events)))
 
 
 (defclass decision-task (task) ())
@@ -53,19 +52,6 @@
 (defclass workflow-task (task) ())
 (defclass child-workflow-task (workflow-task) ())
 (defclass timer-task (task) ())
-
-
-(defmethod task-scheduled-event (task)
-  (when (task-scheduled-event-id task)
-    (get-event (task-scheduled-event-id task))))
-
-(defmethod task-started-event (task)
-  (when (task-started-event-id task)
-    (get-event (task-started-event-id task))))
-
-(defmethod task-closed-event (task)
-  (when (task-closed-event-id task)
-    (get-event (task-closed-event-id task))))
 
 
 (defclass workflow-execution-info (workflow-task)
@@ -76,7 +62,23 @@
    (activity-tasks :initform (make-hash-table :test #'equal))
    (decision-tasks :initform (make-hash-table))
    (timer-tasks :initform (make-hash-table :test #'equal))
-   (child-workflow-tasks :initform (make-hash-table :test #'equal))))
+   (child-workflow-tasks :initform (make-hash-table :test #'equal))
+   (markers :initform (make-hash-table))))
+
+
+(defun %record-marker (marker-name)
+  (push *current-event* (gethash marker-name (slot-value *wx* 'markers))))
+
+
+(defun get-marker-events (marker-name)
+  (gethash marker-name (slot-value *wx* 'markers)))
+
+
+(defun marker-details (marker-name &optional default)
+  (let ((event (first (get-marker-events marker-name))))
+    (if event
+        (values (event-details event) t)
+        (values default nil))))
 
 
 (defun make-workflow-execution-info (&key events previous-started-event-id
@@ -131,20 +133,20 @@
 
 (defun %state (new-state)
   (setf (slot-value *task* 'state) new-state)
-  (when (< *current-event-id* (slot-value *wx* 'previous-started-event-id))
+  (when (< (event-id *current-event*) (slot-value *wx* 'previous-started-event-id))
     (setf (slot-value *task* 'previous-state) new-state)))
 
 (defun %schedule ()
-  (slot-value *task* 'scheduled-event-id) *current-event-id*)
+  (slot-value *task* 'scheduled-event) *current-event*)
 
 (defun %start ()
-  (setf (slot-value *task* 'started-event-id) *current-event-id*))
+  (setf (slot-value *task* 'started-event) *current-event*))
 
 (defun %close ()
-  (setf (slot-value *task* 'closed-event-id) *current-event-id*))
+  (setf (slot-value *task* 'closed-event) *current-event*))
 
 (defun %request-cancel ()
-  (push *current-event-id* (slot-value *task* 'request-cancel-event-ids)))
+  (push *current-event* (slot-value *task* 'request-cancel-events)))
 
 
 
@@ -173,11 +175,10 @@
                                                  (slot (eql ,(intern (symbol-name slot-name) :keyword)))
                                                  value)
                   (,transformer value)))
-       (defmethod update-history-with-event ((event ,name))
+       (defmethod update-history-with-event ((*current-event* ,name))
          (with-slots (id ,@(mapcar #'car slots))
-             event
-           (let ((*current-event-id* id))
-             ,@body))))))
+             *current-event*
+           ,@body)))))
 
 
 ;; Workflow events -------------------------------------------------------------------------

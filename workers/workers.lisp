@@ -271,7 +271,7 @@
                  :events (aget task :events)
                  :previous-started-event-id (aget task :previous-started-event-id)
                  :started-event-id (aget task :started-event-id))))
-      (apply decider-function (event-input (get-event (task-started-event-id *wx*))))
+      (apply decider-function (event-input (task-started-event *wx*)))
       (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions))))))
 
 
