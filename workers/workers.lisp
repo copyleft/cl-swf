@@ -270,9 +270,12 @@
 
 
 (defun worker-compute-workflow-response (task)
-  (list #'swf::respond-decision-task-completed
-        :task-token (aget task :task-token)
-        :decisions (run-decision-task task)))
+  (multiple-value-bind (context decisions)
+      (run-decision-task task)
+    (list #'swf::respond-decision-task-completed
+          :task-token (aget task :task-token)
+          :execution-context context
+          :decisions decisions)))
 
 
 (defun run-decision-task (task)
@@ -285,9 +288,13 @@
                  :events (aget task :events)
                  :previous-started-event-id (aget task :previous-started-event-id)
                  :started-event-id (aget task :started-event-id))))
+      (log-trace ":WORKFLOW: ~S start with context: ~S" workflow (slot-value *wx* 'context))
       (apply decider-function (event-input (task-started-event *wx*)))
+      (log-trace ":WORKFLOW: ~S done with context: ~S" workflow (slot-value *wx* 'context))
       (log-trace ":WORKFLOW: ~S made ~S decision~:P." workflow (length (slot-value *wx* 'decisions)))
-      (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions))))))
+      (values (unless (equal (slot-value *wx* 'old-context) (slot-value *wx* 'context))
+                (serialize-object (slot-value *wx* 'context)))
+              (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions)))))))
 
 
 ;;; Handling activity tasks ------------------------------------------------------------------------

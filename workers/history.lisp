@@ -55,7 +55,9 @@
 
 
 (defclass workflow-execution-info (workflow-task)
-  ((decisions :initform nil)
+  ((context :initform nil)
+   (old-context :initform nil)
+   (decisions :initform nil)
    (events :initarg :events)
    (previous-started-event-id :initarg :previous-started-event-id)
    (started-event-id :initarg :started-event-id)
@@ -64,6 +66,14 @@
    (timer-tasks :initform (make-hash-table :test #'equal))
    (child-workflow-tasks :initform (make-hash-table :test #'equal))
    (markers :initform (make-hash-table))))
+
+
+(defun context (key &optional default)
+  (getf (slot-value *wx* 'context) key default))
+
+
+(defun (setf context) (new-value key &optional default)
+  (setf (getf (slot-value *wx* 'context) key default) new-value))
 
 
 (defun %record-marker (marker-name)
@@ -286,11 +296,15 @@
 
 
 (define-history-event decision-task-completed-event
-    (scheduled-event-id
+    ((execution-context deserialize-object)
+     scheduled-event-id
      started-event-id)
   (with-task (decision-task scheduled-event-id)
     (%close)
-    (%state :completed)))
+    (%state :completed)
+    (when execution-context
+      (setf (slot-value *wx* 'old-context) (copy-tree execution-context))
+      (setf (slot-value *wx* 'context) execution-context))))
 
 
 (define-history-event decision-task-timed-out-event
