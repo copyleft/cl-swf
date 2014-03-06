@@ -272,7 +272,7 @@
          (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
          (decider-function (task-type-function workflow)))
-    (log-trace "Handling workflow ~S" workflow) (error "wrong")
+    (log-trace "Handling workflow ~S" workflow)
     (let ((*wx* (make-workflow-execution-info
                  :events (aget task :events)
                  :previous-started-event-id (aget task :previous-started-event-id)
