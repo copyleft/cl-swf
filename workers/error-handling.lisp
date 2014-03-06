@@ -16,34 +16,34 @@
 					     (list (cons *print-length* 20) (cons *print-level* 6))))
 					(sb-debug:backtrace 100 s))))))
 
-    (let ((message *debug-io*))
+    (log-error "~A"
+               (with-output-to-string (message)
+                 (flet ((heading (text)
+                          (format message "~%~%~A~%~A" text #.(make-string 100 :initial-element #\=))))
 
-      (flet ((heading (text)
-               (format message "~%~%~A~%~A" text #.(make-string 100 :initial-element #\=))))
+                   (format message "~A~%	Error of type ~S." error (type-of error))
 
-        (format message "~A~%	Error of type ~S." error (type-of error))
-
-        (heading "Restarts")
-        (loop with carry-on-idx
-              with carry-on-restart = nil
-              for i from 0
-              for restart in (compute-restarts)
-              when (and (null carry-on-restart)
-                        (eq 'carry-on (restart-name restart)))
-              do (setf carry-on-restart restart
-                       carry-on-idx i)
-              do (format message "~&~:[  ~;=>~]~2D: [~A] ~A~%"
-                         (eql i carry-on-idx)
-                         i (restart-name restart) restart)
-              finally (when carry-on-restart
-                        (format message "~%Will invoke restart ~D: [~S] ~A."
-                                carry-on-idx (restart-name carry-on-restart)
-                                carry-on-restart)))
+                   (heading "Restarts")
+                   (loop with carry-on-idx
+                         with carry-on-restart = nil
+                         for i from 0
+                         for restart in (compute-restarts)
+                         when (and (null carry-on-restart)
+                                   (eq 'carry-on (restart-name restart)))
+                         do (setf carry-on-restart restart
+                                  carry-on-idx i)
+                         do (format message "~&~:[  ~;=>~]~2D: [~A] ~A~%"
+                                    (eql i carry-on-idx)
+                                    i (restart-name restart) restart)
+                         finally (when carry-on-restart
+                                   (format message "~%Will invoke restart ~D: [~S] ~A."
+                                           carry-on-idx (restart-name carry-on-restart)
+                                           carry-on-restart)))
 
                                         ;(heading "Backtrace")
                                         ;(terpri message)
                                         ;(princ backtrace message)
-        ))
+                   )))
 
     ;; On productions server, simply carry-on
     (when *auto-carry-on*

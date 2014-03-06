@@ -34,20 +34,25 @@
 
 
 (defun worker-look-for-task (worker type)
+  (log-trace "~S looking for ~S task" worker type)
   (let ((swf::*service* (worker-service worker)))
     (let ((identity (princ-to-string sb-thread:*current-thread*)))
-      (ecase type
-        (:workflow
-         (let ((response (swf::poll-for-decision-task :all-pages t
-                                                      :identity identity
-                                                      :task-list (worker-task-list worker))))
-           (when (aget response :events)
-             response)))
-        (:activity
-           (let ((response (swf::poll-for-activity-task :identity identity
-                                                        :task-list (worker-task-list worker))))
-             (when (aget response :task-token)
-               response)))))))
+      (let ((task (ecase type
+                    (:workflow
+                     (let ((response (swf::poll-for-decision-task :all-pages t
+                                                                  :identity identity
+                                                                  :task-list (worker-task-list worker))))
+                       (when (aget response :events)
+                         response)))
+                    (:activity
+                     (let ((response (swf::poll-for-activity-task :identity identity
+                                                                  :task-list (worker-task-list worker))))
+                       (when (aget response :task-token)
+                         response))))))
+        (if task
+            (log-trace "~S got ~S task for ~S" worker type (aget task :workflow-execution))
+            (log-trace "~S got no ~S task" worker type))
+        task))))
 
 
 (defun worker-handle-next-task (worker type)
@@ -267,11 +272,13 @@
          (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
          (decider-function (task-type-function workflow)))
+    (log-trace "Handling workflow ~S" workflow) (error "wrong")
     (let ((*wx* (make-workflow-execution-info
                  :events (aget task :events)
                  :previous-started-event-id (aget task :previous-started-event-id)
                  :started-event-id (aget task :started-event-id))))
       (apply decider-function (event-input (task-started-event *wx*)))
+      (log-trace "Workflow ~S made ~S decisions" workflow (length (slot-value *wx* 'decisions)))
       (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions))))))
 
 
@@ -310,7 +317,7 @@
           (restart-case
               (handler-bind ((error (lambda (e) (setf error e))))
                 (let ((value (compute-activity-task-value task)))
-                  (list #'swf::respond-activity-task-completed
+                  (list #'swf::respond-activity-task-complete
                         :result (serialize-object value)
                         :task-token (aget task :task-token))))
             (carry-on ()
