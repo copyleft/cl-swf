@@ -2,6 +2,7 @@
 
 
 (defun add-decision (decision)
+  (log-trace "Add decision ~S" decision)
   (push decision (slot-value *wx* 'decisions))
   decision)
 
@@ -10,21 +11,22 @@
 (defgeneric transform-decision (decision))
 
 (defmacro define-decision (name slots)
-  (let ((slots (mapcar #'normalize-slot slots)))
+  (let ((slots (mapcar #'normalize-slot slots))
+        (class-name (intern (format nil "~A-DECISION" name))))
     `(progn
-       (defclass ,name (decision)
+       (defclass ,class-name (decision)
          ,(loop for (slot-name) in slots
                 collect `(,slot-name
                           :initarg ,(intern (symbol-name slot-name) :keyword)
                           :initform nil
                           :reader ,(intern (format nil "DECISION-~A" slot-name)))))
-       (defun ,name (&key ,@(mapcar #'car slots))
+       (defun ,class-name (&key ,@(mapcar #'car slots))
          (add-decision
-          (make-instance ',name
+          (make-instance ',class-name
                          ,@(loop for (slot-name) in slots
                                  collect (intern (symbol-name slot-name) :keyword)
                                  collect slot-name))))
-       (defmethod transform-decision ((decision ,name))
+       (defmethod transform-decision ((decision ,class-name))
          (alist :decision-type ',name
                 ,(intern (format nil "~A-DECISION-ATTRIBUTES" name) :keyword)
                 (list ,@(loop for (slot-name transformer) in slots collect

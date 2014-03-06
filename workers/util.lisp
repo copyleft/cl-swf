@@ -12,6 +12,11 @@
    (function :initarg :function :reader task-type-function)))
 
 
+(defmethod print-object ((task-type task-type) stream)
+  (print-unreadable-object (task-type stream :type t)
+    (prin1 (task-type-name task-type) stream)))
+
+
 (defun serialize-task-type (task-type)
   (with-slots (options) task-type
     (alist :name (getf options :name)
@@ -81,7 +86,7 @@
       (let ((*package* (find-package :%swf-serialization))
             (*readtable* *swf-serialization-readtable*))
         (with-output-to-string (out)
-          (doit object out))))))
+          (serialize-to-stream object out))))))
 
 
 (defun deserialize-object (string)

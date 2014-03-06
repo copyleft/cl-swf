@@ -21,6 +21,11 @@
              :initform (list *package*)
              :reader worker-packages)))
 
+(defun set-worker-thread-status (format-control &rest args)
+  (log-trace "SWF-WORKER: ~?" format-control args)
+  (setf (sb-thread:thread-name sb-thread:*current-thread*)
+        (format nil "SWF-WORKER: ~?" format-control args)))
+
 
 (defun worker-start (worker type)
   (loop (worker-handle-next-task worker type)))
@@ -34,7 +39,7 @@
 
 
 (defun worker-look-for-task (worker type)
-  (log-trace "~S looking for ~S task" worker type)
+  (set-worker-thread-status "~S: Looking for task." type)
   (let ((swf::*service* (worker-service worker)))
     (let ((identity (princ-to-string sb-thread:*current-thread*)))
       (let ((task (ecase type
@@ -50,8 +55,8 @@
                        (when (aget response :task-token)
                          response))))))
         (if task
-            (log-trace "~S got ~S task for ~S" worker type (aget task :workflow-execution))
-            (log-trace "~S got no ~S task" worker type))
+            (log-trace "~S: Got task for ~S" type (aget task :workflow-execution))
+            (log-trace "~S: Got no task." type))
         task))))
 
 
@@ -65,6 +70,7 @@
 
 
 (defun worker-handle-task (worker type task)
+  (set-worker-thread-status "~S: Handling task." type)
   (let ((*worker* worker)
         (swf::*service* (worker-service worker)))
     (restart-case
@@ -74,6 +80,7 @@
                (worker-compute-workflow-response task))
               (:activity
                (worker-compute-activity-response task)))
+          (set-worker-thread-status "~S: Sending response: ~S" type function)
           (apply function args))
       (retry ()
         :report "Retry handle task"
@@ -227,17 +234,18 @@
                        schedule-to-start-timeout
                        start-to-close-timeout
                        task-list)
-         (schedule-activity-task :activity-id activity-id
-                                 :activity-type (get ',name 'task-type)
-                                 :control control
-                                 :heartbeat-timeout heartbeat-timeout
-                                 :input (list ,@(loop for arg in activity-args
-                                                      collect (intern (symbol-name arg) :keyword)
-                                                      collect arg))
-                                 :schedule-to-close-timeout schedule-to-close-timeout
-                                 :schedule-to-start-timeout schedule-to-start-timeout
-                                 :start-to-close-timeout start-to-close-timeout
-                                 :task-list task-list))
+         (schedule-activity-task-decision
+          :activity-id activity-id
+          :activity-type (get ',name 'task-type)
+          :control control
+          :heartbeat-timeout heartbeat-timeout
+          :input (list ,@(loop for arg in activity-args
+                               collect (intern (symbol-name arg) :keyword)
+                               collect arg))
+          :schedule-to-close-timeout schedule-to-close-timeout
+          :schedule-to-start-timeout schedule-to-start-timeout
+          :start-to-close-timeout start-to-close-timeout
+          :task-list task-list))
        (setf (get ',name 'task-type)
              (make-instance 'activity-type
                             :name ',name
@@ -272,13 +280,13 @@
          (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
          (decider-function (task-type-function workflow)))
-    (log-trace "Handling workflow ~S" workflow)
+    (set-worker-thread-status ":WORKFLOW: Handling ~S" workflow)
     (let ((*wx* (make-workflow-execution-info
                  :events (aget task :events)
                  :previous-started-event-id (aget task :previous-started-event-id)
                  :started-event-id (aget task :started-event-id))))
       (apply decider-function (event-input (task-started-event *wx*)))
-      (log-trace "Workflow ~S made ~S decisions" workflow (length (slot-value *wx* 'decisions)))
+      (log-trace ":WORKFLOW: ~S made ~S decision~:P." workflow (length (slot-value *wx* 'decisions)))
       (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions))))))
 
 
@@ -317,7 +325,7 @@
           (restart-case
               (handler-bind ((error (lambda (e) (setf error e))))
                 (let ((value (compute-activity-task-value task)))
-                  (list #'swf::respond-activity-task-complete
+                  (list #'swf::respond-activity-task-completed
                         :result (serialize-object value)
                         :task-token (aget task :task-token))))
             (carry-on ()
@@ -344,6 +352,7 @@
              (activity (or (find-activity-type activity-type)
                            (error "Could not find activity type ~S." activity-type)))
              (input (deserialize-object (aget task :input))))
+        (set-worker-thread-status ":ACTIVITY: Handling ~S" activity)
         (apply (task-type-function activity) input))
     (use-value (&rest new-value)
       :report "Return something else."
