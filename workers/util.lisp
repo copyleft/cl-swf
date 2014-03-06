@@ -40,8 +40,8 @@
 
 ;;; Serialization ---------------------------------------------------------------------------------
 ;;;
-;;; Serialization is limited to numbers, strings, T, NIL, keyword symbols, conses / lists
-;;; and local-time:timestamp.
+;;; Serialization is limited to numbers, strings, T, NIL, symbols, conses / lists
+;;; and local-time:timestamp
 ;;;
 
 (defpackage #:%swf-serialization
@@ -54,27 +54,34 @@
     *readtable*))
 
 
-(defun serializable-p (object &optional (cons-cache (make-hash-table)))
-  (typecase object
+(defun serialize-to-stream (object stream)
+  (etypecase object
+    ((or null number string keyword local-time:timestamp)
+     (prin1 object stream))
+    (symbol
+     (princ (package-name (symbol-package object)) stream)
+     (princ "::" stream)
+     (princ (symbol-name object) stream))
     (cons
-     (prog1 (and (not (gethash object cons-cache))
-                 (serializable-p (car object) cons-cache)
-                 (serializable-p (cdr object) cons-cache))
-       (setf (gethash object cons-cache) t)))
-    (real t)
-    (keyword t)
-    (string t)
-    ((member t nil) t)
-    (local-time:timestamp t)))
+     (princ "(" stream)
+     (loop for c on object do
+           (serialize-to-stream (car c) stream)
+           (when (cdr c)
+             (princ #\Space stream))
+           (when (and (cdr c)
+                      (not (consp (cdr c))))
+             (princ ". " stream)
+             (serialize-to-stream (cdr c) stream)))
+     (princ ")" stream))))
 
 
 (defun serialize-object (object)
   (when object
-    (assert (serializable-p object) () "~S is not serializable" object)
     (with-standard-io-syntax
       (let ((*package* (find-package :%swf-serialization))
             (*readtable* *swf-serialization-readtable*))
-        (prin1-to-string object)))))
+        (with-output-to-string (out)
+          (doit object out))))))
 
 
 (defun deserialize-object (string)
