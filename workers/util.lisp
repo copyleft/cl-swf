@@ -62,7 +62,8 @@
 
 (defun serialize-to-stream (object stream)
   (etypecase object
-    ((or null number string keyword local-time:timestamp)
+    ((or number string keyword local-time:timestamp
+         (member t nil))
      (prin1 object stream))
     (symbol
      (princ (package-name (symbol-package object)) stream)

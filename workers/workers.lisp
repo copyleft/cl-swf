@@ -91,6 +91,7 @@
               (:activity
                (worker-compute-activity-response task)))
           (set-worker-thread-status "~S: Sending response: ~S" type function)
+          ;; FIXME: retry sending response, this, unless it's clear that won't help
           (apply function args))
       (retry ()
         :report "Retry handle task"

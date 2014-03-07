@@ -70,7 +70,7 @@
 
 (defun new-events ()
   (with-slots (events previous-started-event-id) *wx*
-    (coerce (subseq events (1+ previous-started-event-id)) 'list)))
+    (coerce (subseq events previous-started-event-id) 'list)))
 
 
 (defun context (key &optional default)
