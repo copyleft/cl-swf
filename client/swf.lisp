@@ -25,9 +25,13 @@ and the reponse headers as an assoc list."
   (let* (result
          status
          headers-in
+         error
          (thread (sb-thread:make-thread (lambda ()
-                                          (multiple-value-setq (result status headers-in)
-                                            (http-post* uri payload headers)))
+                                          (handler-case
+                                              (multiple-value-setq (result status headers-in)
+                                                (http-post* uri payload headers))
+                                            (error (e)
+                                              (setf error e))))
                                         :name (cdr (assoc :x-amz-target headers)))))
     (unwind-protect
          (loop with wait-until = (+ (get-universal-time) timeout)
@@ -37,6 +41,8 @@ and the reponse headers as an assoc list."
       (when (sb-thread:thread-alive-p thread)
         (log-trace "http timeout ~S" (cdr (assoc :x-amz-target headers)))
         (sb-thread:terminate-thread thread)))
+    (when error
+      (error error))
     (values result status headers-in)))
 
 
@@ -100,15 +106,16 @@ headers, the unparsed result as a string."
 
 
 (defmacro define-swf-conditions (&body names)
-  (flet ((fault-name (string)
-           (remove #\- (format nil "~:(~A~)-Fault"
-                               (subseq string 0 (- (length string) 6))))))
-    `(progn
-       (defparameter *swf-conditions*
-         '(,@(loop for name in names
-                   collect `(,(fault-name (symbol-name name)) . ,name))))
-       ,@(loop for name in names
-               collect `(define-condition ,name (swf-error) ())))))
+  `(progn
+     (defparameter *swf-conditions*
+       '(,@(loop for name in names
+                 for simple-name = (subseq (symbol-name name) 0 (- (length (symbol-name name)) 6))
+                 for fault-name = (remove #\- (format nil "~:(~A~)-Fault" simple-name))
+                 for exception-name = (remove #\- (format nil "~:(~A~)-Exception" simple-name))
+                 collect `(,fault-name . ,name)
+                 collect `(,exception-name . ,name))))
+     ,@(loop for name in names
+             collect `(define-condition ,name (swf-error) ()))))
 
 
 (define-swf-conditions
@@ -119,7 +126,8 @@ headers, the unparsed result as a string."
   type-already-exists-error
   type-deprecated-error
   unknown-resource-error
-  workflow-execution-already-started-error)
+  workflow-execution-already-started-error
+  throttling-error)
 
 
 (defun swf-request (service action payload)

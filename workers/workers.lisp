@@ -28,7 +28,18 @@
 
 
 (defun worker-start (worker type)
-  (loop (worker-handle-next-task worker type)))
+  (with-error-handling
+    (let ((inter-task-pause 0))
+      (loop
+       (handler-case
+           (progn
+             (worker-handle-next-task worker type)
+             (setf inter-task-pause (max 0 (1- inter-task-pause))))
+         (swf::throttling-error (e)
+           (setf inter-task-pause (min (* 60 60 2) (+ 10 (random 20) inter-task-pause)))
+           (log-warn "~S: Throttling: ~S" type (swf::swf-error-action e))))
+       (set-worker-thread-status "~S: Inter task pause: ~D seconds" type inter-task-pause)
+       (sleep inter-task-pause)))))
 
 
 (defun worker-start-thread (worker type)
@@ -61,12 +72,11 @@
 
 
 (defun worker-handle-next-task (worker type)
-  (with-error-handling
-    (with-simple-restart (carry-on "Stop handle-next-task.")
-      (let ((task (worker-look-for-task worker type)))
-        (when task
-          (with-simple-restart (carry-on "Stop handling this ~A task." type)
-            (worker-handle-task worker type task)))))))
+  (with-simple-restart (carry-on "Stop handle-next-task.")
+    (let ((task (worker-look-for-task worker type)))
+      (when task
+        (with-simple-restart (carry-on "Stop handling this ~A task." type)
+          (worker-handle-task worker type task))))))
 
 
 (defun worker-handle-task (worker type task)
