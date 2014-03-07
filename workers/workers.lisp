@@ -34,7 +34,7 @@
 (defun worker-start-thread (worker type)
   (sb-thread:make-thread (lambda (worker type)
                            (worker-start worker type))
-                         :name (format nil "~S worker for ~S" type worker)
+                         :name (format nil "~S worker loop" type)
                          :arguments (list worker type)))
 
 
@@ -136,6 +136,7 @@
 (defmacro define-workflow (name
                            (&rest workflow-args)
                               (&key (version :1)
+                                    (timeout 10)
                                     default-child-policy
                                     default-execution-start-to-close-timeout
                                     (default-task-list "default")
@@ -167,6 +168,7 @@
                             :name ',name
                             :function (lambda (&key ,@workflow-args)
                                         ,@body)
+                            :timeout ,timeout
                             :options (list :name ,string-name
                                            :version ,string-version
                                            :default-child-policy

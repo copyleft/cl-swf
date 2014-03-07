@@ -9,6 +9,7 @@
                         :serial t
                         :components
                         ((:file "packages")
+                         (:file "logging")
                          (:file "swf")
                          (:file "transform")
                          (:file "types")

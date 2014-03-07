@@ -9,7 +9,8 @@
 (defclass task-type ()
   ((name :initarg :name :reader task-type-name)
    (options :initarg :options :reader task-type-options)
-   (function :initarg :function :reader task-type-function)))
+   (function :initarg :function :reader task-type-function)
+   (timeout :initarg :timeout :reader task-type-timeout)))
 
 
 (defmethod print-object ((task-type task-type) stream)

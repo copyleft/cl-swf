@@ -1,7 +1,7 @@
 (in-package :swf)
 
 
-(defun http-post (uri payload headers)
+(defun http-post* (uri payload headers)
   "Makes a http post request. Should wait at least 70 seconds for a
 response. Payload is a string, headers is assoc list where the keys
 are string designators and the values are string. Returns three
@@ -21,6 +21,25 @@ and the reponse headers as an assoc list."
             headers)))
 
 
+(defun http-post (uri payload headers &key (timeout 300))
+  (let* (result
+         status
+         headers-in
+         (thread (sb-thread:make-thread (lambda ()
+                                          (multiple-value-setq (result status headers-in)
+                                            (http-post* uri payload headers)))
+                                        :name (cdr (assoc :x-amz-target headers)))))
+    (unwind-protect
+         (loop with wait-until = (+ (get-universal-time) timeout)
+               until (or (not (sb-thread:thread-alive-p thread))
+                         (< wait-until (get-universal-time)))
+               do (sleep 1))
+      (when (sb-thread:thread-alive-p thread)
+        (log-trace "http timeout ~S" (cdr (assoc :x-amz-target headers)))
+        (sb-thread:terminate-thread thread)))
+    (values result status headers-in)))
+
+
 (defun swf-request* (region action payload)
   "Executes an swf action. Region is a string designator for an aws
 region. Action is a string. Payload is a JSON object. Returns four
@@ -31,6 +50,7 @@ headers, the unparsed result as a string."
          (url (format nil "https://~A/" host))
          (target (format nil "SimpleWorkflowService.~A" action))
          (content-type "application/x-amz-json-1.0"))
+    (log-trace "swf-request: ~A ~A" region action)
     (multiple-value-bind (authz date)
         (aws-sign4 :region region
                    :service :swf
@@ -46,6 +66,7 @@ headers, the unparsed result as a string."
                        (:content-type . ,content-type)
                        (:x-amz-date . ,date)
                        (:authorization . ,authz)))
+        (log-trace "  result status: ~A size: ~A" status (length result-string))
         (values (when (plusp (length result-string))
                   (json-parse result-string :use-ratios t))
                 status
@@ -111,7 +132,7 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
         (swf-request* (getf service :region) action payload))
     (cond ((eql status 200)
            result)
-          (t
+          ((numberp status)
            (let* ((type-string (cdr (assoc "__type" (cdr result) :test #'string=)))
                   (hash-pos (position #\# type-string :from-end t))
                   (type (subseq type-string (1+ hash-pos)))
