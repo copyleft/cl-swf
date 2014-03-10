@@ -146,6 +146,14 @@
            (error "Task not found: ~S ~S" type id))))))
 
 
+(defun get-timer (id)
+  (get-task 'timer-task id))
+
+
+(defun get-activity (id)
+  (get-task 'activity-task id))
+
+
 (defun %add-task (type &optional id)
   (let ((tasks (get-tasks-table type)))
     (let ((task (make-instance type)))
