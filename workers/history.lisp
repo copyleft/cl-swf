@@ -68,6 +68,21 @@
    (markers :initform (make-hash-table))))
 
 
+(defun started-timestamp ()
+  "Timestamp when this worklfow execution started."
+  (event-timestamp (task-started-event *wx*)))
+
+
+(defun current-timestamp ()
+  "The current timestamp, ie. the timestamp when this decision task started."
+  (event-timestamp (get-event (slot-value *wx* 'started-event-id))))
+
+
+(defun current-runtime ()
+  "The runtime of this workflow execution so far."
+  (local-time:timestamp-difference (current-timestamp) (started-timestamp)))
+
+
 (defun new-events ()
   (with-slots (events previous-started-event-id) *wx*
     (coerce (subseq events previous-started-event-id) 'list)))
@@ -133,7 +148,6 @@
 
 (defun %add-task (type &optional id)
   (let ((tasks (get-tasks-table type)))
-    (assert (null (gethash id tasks)) () "Program error: duplicate task id ~S ~S" type id)
     (let ((task (make-instance type)))
       (setf (gethash id tasks) task)
       task)))
@@ -325,7 +339,7 @@
 
 
 (define-history-event activity-task-scheduled-event
-    (activity-id
+    ((activity-id deserialize-object)
      (activity-type find-activity-type)
      (control deserialize-object)
      decision-task-completed-event-id
@@ -341,7 +355,7 @@
 
 
 (define-history-event schedule-activity-task-failed-event ; TODO
-    (activity-id
+    ((activity-id deserialize-object)
      activity-type
      cause
      decision-task-completed-event-id))
@@ -395,14 +409,14 @@
 
 
 (define-history-event activity-task-cancel-requested-event
-    (activity-id
+    ((activity-id deserialize-object)
      decision-task-completed-event-id)
   (with-task (activity-task activity-id)
     (%request-cancel)))
 
 
 (define-history-event request-cancel-activity-task-failed-event ; TODO
-    (activity-id
+    ((activity-id deserialize-object)
      cause
      decision-task-completed-event-id))
 
@@ -430,7 +444,7 @@
     ((control deserialize-object)
      decision-task-completed-event-id
      start-to-fire-timeout
-     timer-id)
+     (timer-id deserialize-object))
   (with-new-task (timer-task timer-id)
     (%start)
     (%state :started)))
@@ -439,12 +453,12 @@
 (define-history-event start-timer-failed-event ; TODO
     (cause
      decision-task-completed-event-id
-     timer-id))
+     (timer-id deserialize-object)))
 
 
 (define-history-event timer-fired-event
     (started-event-id
-     timer-id)
+     (timer-id deserialize-object))
   (with-task (timer-task timer-id)
     (%close)
     (%state :fired)))
@@ -453,7 +467,7 @@
 (define-history-event timer-canceled-event
     (decision-task-completed-event-id
      started-event-id
-     timer-id)
+     (timer-id deserialize-object))
   (with-task (timer-task timer-id)
     (%close)
     (%state :canceled)))
@@ -461,7 +475,7 @@
 
 (define-history-event cancel-timer-failed-event ; TODO
     (cause
-     timer-id))
+     (timer-id deserialize-object)))
 
 
 ;; Child workflow -------------------------------------------------------------------------

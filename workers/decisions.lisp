@@ -35,7 +35,7 @@
 
 
 (define-decision cancel-timer
-    (timer-id))
+    ((timer-id serialize-object)))
 
 
 (define-decision cancel-workflow-execution
@@ -67,16 +67,17 @@
 
 
 (define-decision request-cancel-activity-task
-    (activity-id))
+    ((activity-id serialize-object)))
 
 
 (define-decision request-cancel-external-workflow-execution
     ((control serialize-object)
-     run-id workflow-id))
+     run-id
+     workflow-id))
 
 
 (define-decision schedule-activity-task
-    (activity-id
+    ((activity-id serialize-object)
      (activity-type serialize-task-type)
      (control serialize-object)
      heartbeat-timeout
@@ -110,4 +111,4 @@
 (define-decision start-timer
     ((control serialize-object)
      start-to-fire-timeout
-     timer-id))
+     (timer-id serialize-object)))

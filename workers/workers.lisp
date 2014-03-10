@@ -178,7 +178,8 @@
              (make-instance 'workflow-type
                             :name ',name
                             :function (lambda (&key ,@workflow-args)
-                                        ,@body)
+                                        (block nil
+                                          ,@body))
                             :timeout ,timeout
                             :options (list :name ,string-name
                                            :version ,string-version
