@@ -99,39 +99,22 @@
         (read-from-string string)))))
 
 
-(defun %-encode (string)
-  (with-output-to-string (s)
-    (loop for char across string
-          for code = (char-code char)
-          do (if (or (<= #x00 code #x1f)
-                     (<= #x7f code #x9f)
-                     (find char ":/|"))
-                 (format s "%~2,'0X" code)
-                 (princ char s)))))
-
-
-(defun %-decode (string)
-  (with-output-to-string (s)
-    (loop with index = 0
-          while (< index (length string))
-          do (cond ((char= #\% (char string index))
-                    (princ (code-char (parse-integer string
-                                                     :start (1+ index)
-                                                     :end (+ 3 index)
-                                                     :radix 16))
-                           s)
-                    (incf index 3))
-                   (t
-                    (princ (char string index) s)
-                    (incf index))))))
-
-
 (defun serialize-id (id)
-  (%-encode (serialize-object id)))
+  "An id can eiter be a keyword, string or an integer. The name of the
+keyword or the string must not contain a : (colon), / (slash),
+| (vertical bar), or any control characters (\u0000-\u001f | \u007f -
+\u009f). Also, it must not contain the literal string 'arn'."
+  (if (stringp id)
+      (serialize-object id)
+      (princ-to-string id)))
 
 
 (defun deserialize-id (string)
-  (deserialize-object (%-decode string)))
+  (when (plusp (length string))
+    (if (char= #\" (char string 0))
+        (deserialize-object string)
+        (or (ignore-errors (parse-integer string))
+            (intern string :keyword)))))
 
 
 (defun serialize-slot (slot value)
