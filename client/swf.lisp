@@ -1,7 +1,7 @@
 (in-package :swf)
 
 
-(defun http-post* (uri payload headers)
+(defun http-post (uri payload headers)
   "Makes a http post request. Should wait at least 70 seconds for a
 response. Payload is a string, headers is assoc list where the keys
 are string designators and the values are string. Returns three
@@ -19,31 +19,6 @@ and the reponse headers as an assoc list."
                 "")
             status-code
             headers)))
-
-
-(defun http-post (uri payload headers &key (timeout 300))
-  (let* (result
-         status
-         headers-in
-         error
-         (thread (sb-thread:make-thread (lambda ()
-                                          (handler-case
-                                              (multiple-value-setq (result status headers-in)
-                                                (http-post* uri payload headers))
-                                            (error (e)
-                                              (setf error e))))
-                                        :name (cdr (assoc :x-amz-target headers)))))
-    (unwind-protect
-         (loop with wait-until = (+ (get-universal-time) timeout)
-               until (or (not (sb-thread:thread-alive-p thread))
-                         (< wait-until (get-universal-time)))
-               do (sleep 1))
-      (when (sb-thread:thread-alive-p thread)
-        (log-trace "http timeout ~S" (cdr (assoc :x-amz-target headers)))
-        (sb-thread:terminate-thread thread)))
-    (when error
-      (error error))
-    (values result status headers-in)))
 
 
 (defun swf-request* (region action payload)
