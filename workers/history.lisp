@@ -295,6 +295,11 @@
     (%state :continued-as-new)))
 
 
+(define-history-event continue-as-new-workflow-execution-failed-event
+    (cause
+     decision-task-completed-event-id))
+
+
 (define-history-event workflow-execution-cancel-requested-event
     (cause
      external-initiated-event-id
