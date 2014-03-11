@@ -11,45 +11,45 @@
 (defgeneric transform-decision (decision))
 
 (defmacro define-decision (name slots)
-  (let ((slots (mapcar #'normalize-slot slots))
-        (class-name (intern (format nil "~A-DECISION" name))))
+  (let ((class-name (intern (format nil "~A-DECISION" name))))
     `(progn
        (defclass ,class-name (decision)
-         ,(loop for (slot-name) in slots
+         ,(loop for slot-name in slots
                 collect `(,slot-name
                           :initarg ,(intern (symbol-name slot-name) :keyword)
                           :initform nil
                           :reader ,(intern (format nil "DECISION-~A" slot-name)))))
-       (defun ,class-name (&key ,@(mapcar #'car slots))
+       (defun ,class-name (&key ,@slots)
          (add-decision
           (make-instance ',class-name
-                         ,@(loop for (slot-name) in slots
+                         ,@(loop for slot-name in slots
                                  collect (intern (symbol-name slot-name) :keyword)
                                  collect slot-name))))
        (defmethod transform-decision ((decision ,class-name))
          (alist :decision-type ',name
                 ,(intern (format nil "~A-DECISION-ATTRIBUTES" name) :keyword)
-                (list ,@(loop for (slot-name transformer) in slots collect
+                (list ,@(loop for slot-name in slots collect
                               `(cons ,(intern (symbol-name slot-name) :keyword)
-                                     (,transformer (slot-value decision ',slot-name))))))))))
+                                     (serialize-slot ,(intern (symbol-name slot-name) :keyword)
+                                                     (slot-value decision ',slot-name))))))))))
 
 
 (define-decision cancel-timer
-    ((timer-id serialize-id)))
+    (timer-id))
 
 
 (define-decision cancel-workflow-execution
-    ((details serialize-object)))
+    (details))
 
 
 (define-decision complete-workflow-execution
-    ((result serialize-object)))
+    (result))
 
 
 (define-decision continue-as-new-workflow-execution
     (child-policy
      execution-start-to-close-timeout
-     (input serialize-object)
+     input
      tag-list
      task-list
      task-start-to-close-timeout
@@ -57,31 +57,31 @@
 
 
 (define-decision fail-workflow-execution
-    ((details serialize-object)
-     (reason serialize-object)))
+    (details
+     reason))
 
 
 (define-decision record-marker
-    ((details serialize-object)
-     (marker-name serialize-id)))
+    (details
+     marker-name))
 
 
 (define-decision request-cancel-activity-task
-    ((activity-id serialize-id)))
+    (activity-id))
 
 
 (define-decision request-cancel-external-workflow-execution
-    ((control serialize-object)
+    (control
      run-id
-     (workflow-id serialize-id)))
+     workflow-id))
 
 
 (define-decision schedule-activity-task
-    ((activity-id serialize-id)
-     (activity-type serialize-task-type)
-     (control serialize-object)
+    (activity-id
+     activity-type
+     control
      heartbeat-timeout
-     (input serialize-object)
+     input
      schedule-to-close-timeout
      schedule-to-start-timeout
      start-to-close-timeout
@@ -89,26 +89,26 @@
 
 
 (define-decision signal-external-workflow-execution
-    ((control serialize-object)
-     (input serialize-object)
+    (control
+     input
      run-id
-     (signal-name serialize-id)
-     (workflow-id serialize-object)))
+     signal-name
+     workflow-id))
 
 
 (define-decision start-child-workflow-execution
     (child-policy
-     (control serialize-object)
+     control
      execution-start-to-close-timeout
-     (input serialize-object)
+     input
      tag-list
      task-list
      task-start-to-close-timeout
-     (workflow-id serialize-id)
-     (workflow-type serialize-task-type)))
+     workflow-id
+     workflow-type))
 
 
 (define-decision start-timer
-    ((control serialize-object)
+    (control
      start-to-fire-timeout
-     (timer-id serialize-id)))
+     timer-id))

@@ -131,7 +131,48 @@
 
 
 (defun deserialize-id (string)
-  (%-decode (deserialize-object string)))
+  (deserialize-object (%-decode string)))
+
+
+(defun serialize-slot (slot value)
+  (case slot
+    ((:timer-id
+      :marker-name
+      :activity-id
+      :workflow-id)
+     (serialize-id value))
+    ((:details
+      :result
+      :input
+      :reason
+      :control
+      :execution-context)
+     (serialize-object value))
+    ((:activity-type
+      :workflow-type)
+     (serialize-task-type value))
+    (otherwise value)))
+
+
+(defun deserialize-slot (slot value)
+  (case slot
+    ((:timer-id
+      :marker-name
+      :activity-id
+      :workflow-id)
+     (deserialize-id value))
+    ((:details
+      :result
+      :input
+      :reason
+      :control
+      :execution-context)
+     (deserialize-object value))
+    (:activity-type
+     (find-activity-type value))
+    (:workflow-type
+     (find-workflow-type value))
+    (otherwise value)))
 
 
 ;;; Helpers for dealing with assoc objects

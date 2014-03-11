@@ -174,8 +174,8 @@
           :tag-list tag-list
           :task-list task-list
           :task-start-to-close-timeout task-start-to-close-timeout
-          :workflow-id (serialize-id workflow-id)
-          :workflow-type (serialize-task-type (get ',name 'task-type))))
+          :workflow-id (serialize-slot :workflow-id workflow-id)
+          :workflow-type (serialize-slot :workflow-type (get ',name 'task-type))))
        (setf (get ',name 'task-type)
              (make-instance 'workflow-type
                             :name ',name
