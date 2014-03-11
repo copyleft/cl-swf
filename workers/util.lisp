@@ -151,6 +151,9 @@ keyword or the string must not contain a : (colon), / (slash),
       :control
       :execution-context)
      (deserialize-object value))
+    ((:workflow-execution)
+     (alist :run-id (aget value :run-id)
+            :workflow-id (deserialize-id (aget value :workflow-id))))
     (:activity-type
      (find-activity-type value))
     (:workflow-type
