@@ -28,18 +28,26 @@
 
 
 (defun worker-start (worker type)
-  (with-error-handling
-    (let ((inter-task-pause 0))
-      (loop
-       (handler-case
-           (progn
-             (worker-handle-next-task worker type)
-             (setf inter-task-pause (max 0 (1- inter-task-pause))))
-         (swf::throttling-error (e)
-           (setf inter-task-pause (min (* 60 60 2) (+ 10 (random 20) inter-task-pause)))
-           (log-warn "~S: Throttling: ~S" type (swf::swf-error-action e))))
-       (set-worker-thread-status "~S: Inter task pause: ~D seconds" type inter-task-pause)
-       (sleep inter-task-pause)))))
+  (loop with period = 60
+        with limit = (* 1 period)
+        with pause = 0
+        with log = ()
+        for now = (get-universal-time)
+        for period-start = (- now period)
+        do
+        (worker-handle-next-task worker type)
+        (push now log)
+        (setf log (remove period-start log :test #'>))
+        (cond ((< limit (length log))
+               (incf pause 100))
+              ((and (plusp pause)
+                    (> limit (length log)))
+               (decf pause 250)))
+        (when (minusp pause)
+          (setf pause 0))
+        (when (plusp pause)
+          (set-worker-thread-status "~S: Rate limit pause: ~S ms" type pause)
+          (sleep (/ pause 1000)))))
 
 
 (defun worker-start-thread (worker type)
@@ -72,11 +80,12 @@
 
 
 (defun worker-handle-next-task (worker type)
-  (with-simple-restart (carry-on "Stop handle-next-task.")
-    (let ((task (worker-look-for-task worker type)))
-      (when task
-        (with-simple-restart (carry-on "Stop handling this ~A task." type)
-          (worker-handle-task worker type task))))))
+  (with-error-handling
+    (with-simple-restart (carry-on "Stop handle-next-task.")
+      (let ((task (worker-look-for-task worker type)))
+        (when task
+          (with-simple-restart (carry-on "Stop handling this ~A task." type)
+            (worker-handle-task worker type task)))))))
 
 
 (defun worker-handle-task (worker type task)
@@ -91,8 +100,19 @@
               (:activity
                (worker-compute-activity-response task)))
           (set-worker-thread-status "~S: Sending response: ~S" type function)
-          ;; FIXME: retry sending response, this, unless it's clear that won't help
-          (apply function args))
+          (loop with pause = 5
+                for retry from 0 to 900
+                do
+                (with-simple-restart (carry-on "Retry send task response")
+                  (handler-case
+                      (progn
+                        (apply function args)
+                        (return))
+                    (swf::unknown-resource-error ()
+                      (return))))
+                (log-trace "~S: Will retry sending response after ~S seconds pause" type pause)
+                (set-worker-thread-status "~S: Retry ~S sending response: ~S" type retry function)
+                (sleep pause)))
       (retry ()
         :report "Retry handle task"
         (worker-handle-task worker type task))
