@@ -17,9 +17,13 @@
    (task-list :initarg :task-list
               :initform "default"
               :reader worker-task-list)
+   (identity :initarg :identity
+             :initform (format nil "~A@~A" (sb-posix:getpid) (machine-instance))
+             :reader worker-identity)
    (packages :initarg :packages
              :initform (list *package*)
              :reader worker-packages)))
+
 
 (defun set-worker-thread-status (format-control &rest args)
   (log-trace "SWF-WORKER: ~?" format-control args)
@@ -52,23 +56,22 @@
 (defun worker-look-for-task (worker type)
   (set-worker-thread-status "~S: Looking for task." type)
   (let ((swf::*service* (worker-service worker)))
-    (let ((identity (princ-to-string sb-thread:*current-thread*)))
-      (let ((task (ecase type
-                    (:workflow
-                     (let ((response (swf::poll-for-decision-task :all-pages t
-                                                                  :identity identity
-                                                                  :task-list (worker-task-list worker))))
-                       (when (aget response :events)
-                         response)))
-                    (:activity
-                     (let ((response (swf::poll-for-activity-task :identity identity
-                                                                  :task-list (worker-task-list worker))))
-                       (when (aget response :task-token)
-                         response))))))
-        (if task
-            (log-trace "~S: Got task for ~S" type (aget task :workflow-execution))
-            (log-trace "~S: Got no task." type))
-        task))))
+    (let ((task (ecase type
+                  (:workflow
+                   (let ((response (swf::poll-for-decision-task :all-pages t
+                                                                :identity (worker-identity worker)
+                                                                :task-list (worker-task-list worker))))
+                     (when (aget response :events)
+                       response)))
+                  (:activity
+                   (let ((response (swf::poll-for-activity-task :identity (worker-identity worker)
+                                                                :task-list (worker-task-list worker))))
+                     (when (aget response :task-token)
+                       response))))))
+      (if task
+          (log-trace "~S: Got task for ~S" type (aget task :workflow-execution))
+          (log-trace "~S: Got no task." type))
+      task)))
 
 
 (defun worker-handle-next-task (worker type)
