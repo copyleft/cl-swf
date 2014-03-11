@@ -28,26 +28,18 @@
 
 
 (defun worker-start (worker type)
-  (loop with period = 60
-        with limit = (* 1 period)
-        with pause = 0
-        with log = ()
-        for now = (get-universal-time)
-        for period-start = (- now period)
-        do
-        (worker-handle-next-task worker type)
-        (push now log)
-        (setf log (remove period-start log :test #'>))
-        (cond ((< limit (length log))
-               (incf pause 100))
-              ((and (plusp pause)
-                    (> limit (length log)))
-               (decf pause 250)))
-        (when (minusp pause)
-          (setf pause 0))
-        (when (plusp pause)
-          (set-worker-thread-status "~S: Rate limit pause: ~S ms" type pause)
-          (sleep (/ pause 1000)))))
+  (with-error-handling
+    (loop with pause = 0 do
+          (handler-bind ((error (lambda (e)
+                                  (declare (ignore e))
+                                  (incf pause 5))))
+            (with-simple-restart (carry-on "Stop handle-next-task.")
+              (worker-handle-next-task worker type)
+              (decf pause)))
+          (setf pause (min 60 (max 0 pause)))
+          (when (plusp pause)
+            (set-worker-thread-status "~S: Rate limit pause: ~Ds" type pause)
+            (sleep pause)))))
 
 
 (defun worker-start-thread (worker type)
@@ -80,12 +72,10 @@
 
 
 (defun worker-handle-next-task (worker type)
-  (with-error-handling
-    (with-simple-restart (carry-on "Stop handle-next-task.")
-      (let ((task (worker-look-for-task worker type)))
-        (when task
-          (with-simple-restart (carry-on "Stop handling this ~A task." type)
-            (worker-handle-task worker type task)))))))
+  (let ((task (worker-look-for-task worker type)))
+    (when task
+      (with-simple-restart (carry-on "Stop handling this ~A task." type)
+        (worker-handle-task worker type task)))))
 
 
 (defun worker-handle-task (worker type task)
