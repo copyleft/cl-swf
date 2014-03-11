@@ -164,16 +164,18 @@
                        task-list
                        task-start-to-close-timeout
                        workflow-id)
-         (%start-workflow :child-policy child-policy
-                          :execution-start-to-close-timeout execution-start-to-close-timeout
-                          :input (list ,@(loop for arg in workflow-args
-                                               collect (intern (symbol-name arg) :keyword)
-                                               collect arg))
-                          :tag-list tag-list
-                          :task-list task-list
-                          :task-start-to-close-timeout task-start-to-close-timeout
-                          :workflow-id workflow-id
-                          :workflow-type (get ',name 'task-type)))
+         (swf::start-workflow-execution
+          :child-policy child-policy
+          :execution-start-to-close-timeout execution-start-to-close-timeout
+          :input (serialize-object
+                  (list ,@(loop for arg in workflow-args
+                                collect (intern (symbol-name arg) :keyword)
+                                collect arg)))
+          :tag-list tag-list
+          :task-list task-list
+          :task-start-to-close-timeout task-start-to-close-timeout
+          :workflow-id (serialize-id workflow-id)
+          :workflow-type (serialize-task-type (get ',name 'task-type))))
        (setf (get ',name 'task-type)
              (make-instance 'workflow-type
                             :name ',name
@@ -192,36 +194,6 @@
                                            :default-task-start-to-close-timeout
                                            ,default-task-start-to-close-timeout
                                            :description ,description))))))
-
-
-(defun %start-workflow (&key child-policy
-                          execution-start-to-close-timeout
-                          input
-                          tag-list
-                          task-list
-                          task-start-to-close-timeout
-                          workflow-id
-                          workflow-type)
-  (loop with input-string = (serialize-object input)
-        for id-bits from 16 by 8
-        for id = (or workflow-id
-                     (format nil "~(~36R~)" (random (expt 2 id-bits))))
-        do
-        (handler-case
-            (return
-              (alist :workflow-id id
-                     :run-id (swf::start-workflow-execution
-                              :child-policy child-policy
-                              :execution-start-to-close-timeout execution-start-to-close-timeout
-                              :input input-string
-                              :tag-list tag-list
-                              :task-list task-list
-                              :task-start-to-close-timeout task-start-to-close-timeout
-                              :workflow-id id
-                              :workflow-type (serialize-task-type workflow-type))))
-          (swf::workflow-execution-already-started-error (err)
-            (when workflow-id
-              (error err))))))
 
 
 ;;; Defining activities ----------------------------------------------------------------------------

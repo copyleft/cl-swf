@@ -99,13 +99,39 @@
         (read-from-string string)))))
 
 
-(defun serialize-keyword (keyword)
-  (check-type keyword keyword)
-  (symbol-name keyword))
+(defun %-encode (string)
+  (with-output-to-string (s)
+    (loop for char across string
+          for code = (char-code char)
+          do (if (or (<= #x00 code #x1f)
+                     (<= #x7f code #x9f)
+                     (find char ":/|"))
+                 (format s "%~2,'0X" code)
+                 (princ char s)))))
 
 
-(defun deserialize-keyword (string)
-  (intern string :keyword))
+(defun %-decode (string)
+  (with-output-to-string (s)
+    (loop with index = 0
+          while (< index (length string))
+          do (cond ((char= #\% (char string index))
+                    (princ (code-char (parse-integer string
+                                                     :start (1+ index)
+                                                     :end (+ 3 index)
+                                                     :radix 16))
+                           s)
+                    (incf index 3))
+                   (t
+                    (princ (char string index) s)
+                    (incf index))))))
+
+
+(defun serialize-id (id)
+  (%-encode (serialize-object id)))
+
+
+(defun deserialize-id (string)
+  (%-decode (deserialize-object string)))
 
 
 ;;; Helpers for dealing with assoc objects

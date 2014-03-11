@@ -231,7 +231,7 @@
      tag-list
      task-list
      task-start-to-close-timeout
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (workflow-task)
     (%start)
     (%state :started)))
@@ -248,7 +248,7 @@
 (define-history-event workflow-execution-failed-event
     (decision-task-completed-event-id
      (details deserialize-object)
-     (reason deserialize-keyword))
+     (reason deserialize-object))
   (with-task (workflow-task)
     (%close)
     (%state :failed)))
@@ -274,7 +274,7 @@
     (cause
      child-policy
      (details deserialize-object)
-     (reason deserialize-keyword))
+     (reason deserialize-object))
   (with-task (workflow-task)
     (%close)
     (%state :terminated)))
@@ -289,7 +289,7 @@
      tag-list
      task-list
      task-start-to-close-timeout
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (workflow-task)
     (%close)
     (%state :continued-as-new)))
@@ -320,7 +320,7 @@
 
 
 (define-history-event decision-task-started-event
-    ((identity deserialize-keyword)
+    (identity
      scheduled-event-id)
   (with-task (decision-task scheduled-event-id)
     (%start)
@@ -352,7 +352,7 @@
 
 
 (define-history-event activity-task-scheduled-event
-    ((activity-id deserialize-object)
+    ((activity-id deserialize-id)
      (activity-type find-activity-type)
      (control deserialize-object)
      decision-task-completed-event-id
@@ -368,8 +368,8 @@
 
 
 (define-history-event schedule-activity-task-failed-event ; TODO
-    ((activity-id deserialize-object)
-     activity-type
+    ((activity-id deserialize-id)
+     (activity-type find-activity-type)
      cause
      decision-task-completed-event-id))
 
@@ -393,7 +393,7 @@
 
 (define-history-event activity-task-failed-event
     ((details deserialize-object)
-     (reason deserialize-keyword)
+     (reason deserialize-object)
      scheduled-event-id
      started-event-id)
   (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
@@ -422,14 +422,14 @@
 
 
 (define-history-event activity-task-cancel-requested-event
-    ((activity-id deserialize-object)
+    ((activity-id deserialize-id)
      decision-task-completed-event-id)
   (with-task (activity-task activity-id)
     (%request-cancel)))
 
 
 (define-history-event request-cancel-activity-task-failed-event ; TODO
-    ((activity-id deserialize-object)
+    ((activity-id deserialize-id)
      cause
      decision-task-completed-event-id))
 
@@ -441,13 +441,13 @@
     (external-initiated-event-id
      external-workflow-execution
      (input deserialize-object)
-     (signal-name deserialize-keyword)))
+     (signal-name deserialize-id)))
 
 
 (define-history-event marker-recorded-event ; TODO
     (decision-task-completed-event-id
      (details deserialize-object)
-     (marker-name deserialize-keyword)))
+     (marker-name deserialize-id)))
 
 
 ;; Timer events -------------------------------------------------------------------------
@@ -457,7 +457,7 @@
     ((control deserialize-object)
      decision-task-completed-event-id
      start-to-fire-timeout
-     (timer-id deserialize-object))
+     (timer-id deserialize-id))
   (with-new-task (timer-task timer-id)
     (%start)
     (%state :started)))
@@ -471,7 +471,7 @@
 
 (define-history-event timer-fired-event
     (started-event-id
-     (timer-id deserialize-object))
+     (timer-id deserialize-id))
   (with-task (timer-task timer-id)
     (%close)
     (%state :fired)))
@@ -480,7 +480,7 @@
 (define-history-event timer-canceled-event
     (decision-task-completed-event-id
      started-event-id
-     (timer-id deserialize-object))
+     (timer-id deserialize-id))
   (with-task (timer-task timer-id)
     (%close)
     (%state :canceled)))
@@ -488,7 +488,7 @@
 
 (define-history-event cancel-timer-failed-event ; TODO
     (cause
-     (timer-id deserialize-object)))
+     (timer-id deserialize-id)))
 
 
 ;; Child workflow -------------------------------------------------------------------------
@@ -503,10 +503,9 @@
      tag-list
      task-list
      task-start-to-close-timeout
-     workflow-id
-     workflow-type
-     workflow-execution)
-  (with-new-task (child-workflow workflow-execution)
+     (workflow-id deserialize-id)
+     (workflow-type find-workflow-type))
+  (with-new-task (child-workflow workflow-id)
     (%schedule)
     (%state :scheduled)))
 
@@ -516,15 +515,14 @@
      (control deserialize-object)
      decision-task-completed-event-id
      initiated-event-id
-     workflow-id
-     workflow-type
-     workflow-execution))
+     (workflow-id deserialize-id)
+     (workflow-type find-workflow-type)))
 
 
 (define-history-event child-workflow-execution-started-event
     (initiated-event-id
      workflow-execution
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (child-workflow workflow-execution)
     (%start)
     (%state :started)))
@@ -535,7 +533,7 @@
      (result deserialize-object)
      started-event-id
      workflow-execution
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (child-workflow workflow-execution)
     (%close)
     (%state :completed)))
@@ -544,10 +542,10 @@
 (define-history-event child-workflow-execution-failed-event
     ((details deserialize-object)
      initiated-event-id
-     (reason deserialize-keyword)
+     (reason deserialize-object)
      started-event-id
      workflow-execution
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (child-workflow workflow-execution)
     (%close)
     (%state :failed)))
@@ -558,7 +556,7 @@
      started-event-id
      timeout-type
      workflow-execution
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (child-workflow workflow-execution)
     (%close)
     (%state :timed-out)))
@@ -569,7 +567,7 @@
      initiated-event-id
      started-event-id
      workflow-execution
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (child-workflow workflow-execution)
     (%close)
     (%state :canceled)))
@@ -579,7 +577,7 @@
     (initiated-event-id
      started-event-id
      workflow-execution
-     workflow-type)
+     (workflow-type find-workflow-type))
   (with-task (child-workflow workflow-execution)
     (%close)
     (%state :terminated)))
@@ -593,8 +591,8 @@
      decision-task-completed-event-id
      (input deserialize-object)
      run-id
-     (signal-name deserialize-keyword)
-     workflow-id))
+     (signal-name deserialize-id)
+     (workflow-id deserialize-id)))
 
 
 (define-history-event external-workflow-execution-signaled-event ; TODO
@@ -608,19 +606,19 @@
      decision-task-completed-event-id
      initiated-event-id
      run-id
-     workflow-id))
+     (workflow-id deserialize-object)))
 
 
 (define-history-event request-cancel-external-workflow-execution-initiated-event ; TODO
     ((control deserialize-object)
      decision-task-completed-event-id
      run-id
-     workflow-id))
+     (workflow-id deserialize-object)))
 
 
 (define-history-event external-workflow-execution-cancel-requested-event ; TODO
     (initiated-event-id
-     workflow-execution))
+     workflow-execution)) ; <- TODO deserialize this
 
 
 (define-history-event request-cancel-external-workflow-execution-failed-event ; TODO
@@ -629,4 +627,4 @@
      decision-task-completed-event-id
      initiated-event-id
      run-id
-     workflow-id))
+     (workflow-id deserialize-id)))

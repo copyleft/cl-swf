@@ -35,7 +35,7 @@
 
 
 (define-decision cancel-timer
-    ((timer-id serialize-object)))
+    ((timer-id serialize-id)))
 
 
 (define-decision cancel-workflow-execution
@@ -58,26 +58,26 @@
 
 (define-decision fail-workflow-execution
     ((details serialize-object)
-     (reason serialize-keyword)))
+     (reason serialize-object)))
 
 
 (define-decision record-marker
     ((details serialize-object)
-     (marker-name serialize-keyword)))
+     (marker-name serialize-id)))
 
 
 (define-decision request-cancel-activity-task
-    ((activity-id serialize-object)))
+    ((activity-id serialize-id)))
 
 
 (define-decision request-cancel-external-workflow-execution
     ((control serialize-object)
      run-id
-     workflow-id))
+     (workflow-id serialize-id)))
 
 
 (define-decision schedule-activity-task
-    ((activity-id serialize-object)
+    ((activity-id serialize-id)
      (activity-type serialize-task-type)
      (control serialize-object)
      heartbeat-timeout
@@ -92,8 +92,8 @@
     ((control serialize-object)
      (input serialize-object)
      run-id
-     (signal-name serialize-keyword)
-     workflow-id))
+     (signal-name serialize-id)
+     (workflow-id serialize-object)))
 
 
 (define-decision start-child-workflow-execution
@@ -104,11 +104,11 @@
      tag-list
      task-list
      task-start-to-close-timeout
-     workflow-id
+     (workflow-id serialize-id)
      (workflow-type serialize-task-type)))
 
 
 (define-decision start-timer
     ((control serialize-object)
      start-to-fire-timeout
-     (timer-id serialize-object)))
+     (timer-id serialize-id)))
