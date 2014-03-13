@@ -46,76 +46,93 @@
 
 
 (defun worker-handle-next-task (worker type)
-  (handler-bind ((error
-                  (lambda (error)
-                    (unless (typep error 'activity-error)
-                      (when *enable-debugging*
-                        (with-simple-restart (continue "Log error and look for next task.")
-                          (invoke-debugger error)))
-                      (report-error error)
-                      (return-from worker-handle-next-task error)))))
-    (let ((task (worker-look-for-task worker type)))
-      (when task
-        (worker-handle-task worker type task)
-        (values nil t)))))
-
-
-(defun worker-look-for-task (worker type)
-  (set-worker-thread-status "~S: Looking for task." type)
-  (let ((swf::*service* (worker-service worker)))
-    (let ((task (ecase type
-                  (:workflow
-                   (let ((response (swf::poll-for-decision-task :all-pages t
-                                                                :identity (worker-identity worker)
-                                                                :task-list (worker-task-list worker))))
-                     (when (aget response :events)
-                       response)))
-                  (:activity
-                   (let ((response (swf::poll-for-activity-task :identity (worker-identity worker)
-                                                                :task-list (worker-task-list worker))))
-                     (when (aget response :task-token)
-                       response))))))
-      (if task
-          (log-trace "~S: Got task for ~S" type (aget task :workflow-execution))
-          (log-trace "~S: Got no task." type))
-      task)))
-
-
-(defun worker-handle-task (worker type task)
-  (set-worker-thread-status "~S: Handling task." type)
   (let ((*worker* worker)
         (swf::*service* (worker-service worker)))
-    (restart-case
-        (destructuring-bind (function &rest args)
-            (ecase type
-              (:workflow
-               (worker-compute-workflow-response task))
-              (:activity
-               (worker-compute-activity-response task)))
-          (set-worker-thread-status "~S: Sending response: ~S" type function)
-          (flet ((do-retry (error)
-                   (when *enable-debugging*
-                     (with-simple-restart (continue "Log error and retry.")
-                       (invoke-debugger error)))
-                   (log-info "~S: An error occured while sending task reply, will retry after 15 seconds pause."
-                             type)
-                   (report-error error)
-                   (invoke-restart 'retry)))
-            (loop repeat 40 do
-                  (with-simple-restart (retry "Retry send task reponse")
-                    (handler-bind ((swf::http-error #'do-retry)
-                                   (swf::internal-failure-error #'do-retry)
-                                   (swf::service-unavailable-error #'do-retry)
-                                   (swf::throttling-error #'do-retry))
-                      (apply function args)
-                      (return)))
-                  (sleep 15))))
-      (terminate-workflow ()
-        :report "Terminate this workflow exectuion and all child workflows."
-        (swf::terminate-workflow-execution :child-policy :terminate
-                                           :details "Terminated by restart."
-                                           :run-id (aget task :workflow-execution :run-id)
-                                           :workflow-id (aget task :workflow-execution :workflow-id))))))
+    (handler-bind ((error
+                    (lambda (error)
+                      (unless (typep error 'activity-error)
+                        (when *enable-debugging*
+                          (with-simple-restart (continue "Log error and look for next task.")
+                            (invoke-debugger error)))
+                        (report-error error)
+                        (return-from worker-handle-next-task error)))))
+      (let ((task (worker-look-for-task type)))
+        (when task
+          (worker-handle-task type task)
+          (values nil t))))))
+
+
+(defclass %task ()
+  ((payload :initarg :payload
+             :reader %task-payload)))
+(defclass %decision-task (%task)  ())
+(defclass %activity-task (%task) ())
+
+(defun task-token (task)
+  (aget (%task-payload task) :task-token))
+
+(defmethod print-object ((task %decision-task) stream)
+  (print-unreadable-object (task stream :type t)
+    (format stream "~S" (aget (%task-payload task) :workflow-type))))
+
+(defmethod print-object ((task %activity-task) stream)
+  (print-unreadable-object (task stream :type t)
+    (format stream "~S" (aget (%task-payload task) :activity-type))))
+
+
+(defun worker-look-for-task (type)
+  (set-worker-thread-status "~S: Looking for task." type)
+  (let ((task (ecase type
+                (:workflow
+                 (let ((response (swf::poll-for-decision-task :all-pages t
+                                                              :identity (worker-identity *worker*)
+                                                              :task-list (worker-task-list *worker*))))
+                   (when (aget response :events)
+                     (make-instance '%decision-task :payload response))))
+                (:activity
+                 (let ((response (swf::poll-for-activity-task :identity (worker-identity *worker*)
+                                                              :task-list (worker-task-list *worker*))))
+                   (when (aget response :task-token)
+                     (make-instance '%activity-task :payload response)))))))
+    (if task
+        (log-trace "~S: Got task ~S" type task)
+        (log-trace "~S: Got no task." type))
+    task))
+
+
+(defun worker-handle-task (type task)
+  (set-worker-thread-status "~S: Handling task: ~S" type task)
+  (restart-case
+      (destructuring-bind (function &rest args)
+          (ecase type
+            (:workflow
+             (worker-compute-workflow-response task))
+            (:activity
+             (worker-compute-activity-response task)))
+        (set-worker-thread-status "~S: Sending response: ~S" type function)
+        (flet ((do-retry (error)
+                 (when *enable-debugging*
+                   (with-simple-restart (continue "Log error and retry.")
+                     (invoke-debugger error)))
+                 (log-info "~S: An error occured while sending task reply, will retry after 15 seconds pause."
+                           type)
+                 (report-error error)
+                 (invoke-restart 'retry)))
+          (loop repeat 40 do
+                (with-simple-restart (retry "Retry send task reponse")
+                  (handler-bind ((swf::http-error #'do-retry)
+                                 (swf::internal-failure-error #'do-retry)
+                                 (swf::service-unavailable-error #'do-retry)
+                                 (swf::throttling-error #'do-retry))
+                    (apply function args)
+                    (return)))
+                (sleep 15))))
+    (terminate-workflow ()
+      :report "Terminate this workflow exectuion and all child workflows."
+      (swf::terminate-workflow-execution :child-policy :terminate
+                                         :details "Terminated by restart."
+                                         :run-id (aget task :workflow-execution :run-id)
+                                         :workflow-id (aget task :workflow-execution :workflow-id)))))
 
 
 (defun find-task-type-in-package (package type-spec)
@@ -273,21 +290,21 @@
   (multiple-value-bind (context decisions)
       (run-decision-task task)
     (list #'swf::respond-decision-task-completed
-          :task-token (aget task :task-token)
+          :task-token (task-token task)
           :execution-context context
           :decisions decisions)))
 
 
 (defun run-decision-task (task)
-  (let* ((workflow-type (aget task :workflow-type))
+  (let* ((workflow-type (aget (%task-payload task) :workflow-type))
          (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
-         (decider-function (task-type-function workflow)))
+         (decider-function (task-type-function workflow )))
     (set-worker-thread-status ":WORKFLOW: Handling ~S" workflow)
     (let ((*wx* (make-workflow-execution-info
-                 :events (aget task :events)
-                 :previous-started-event-id (aget task :previous-started-event-id)
-                 :started-event-id (aget task :started-event-id))))
+                 :events (aget (%task-payload task) :events)
+                 :previous-started-event-id (aget (%task-payload task) :previous-started-event-id)
+                 :started-event-id (aget (%task-payload task) :started-event-id))))
       (log-trace ":WORKFLOW: ~S start with context: ~S" workflow (slot-value *wx* 'context))
       (apply decider-function (event-input (task-started-event *wx*)))
       (log-trace ":WORKFLOW: ~S done with context: ~S" workflow (slot-value *wx* 'context))
@@ -328,10 +345,10 @@
   (handler-case
       (list #'swf::respond-activity-task-completed
             :result (serialize-object (compute-activity-task-value task))
-            :task-token (aget task :task-token))
+            :task-token (task-token task))
     (activity-error (error)
       (list #'swf::respond-activity-task-failed
-            :task-token (aget task :task-token)
+            :task-token (task-token task)
             :reason (serialize-object (activity-error-reason error))
             :details (serialize-object (activity-error-details error))))))
 
@@ -355,10 +372,10 @@
                                    :reason *default-activity-error-reason*
                                    :details (list* :condition (format nil "~A" error)
                                                    *default-activity-error-details*))))))
-          (let* ((activity-type (aget task :activity-type))
+          (let* ((activity-type (aget (%task-payload task) :activity-type))
                  (activity (or (find-activity-type activity-type)
                                (error "Could not find activity type ~S." activity-type)))
-                 (input (deserialize-object (aget task :input))))
+                 (input (deserialize-object (aget (%task-payload task) :input))))
             (set-worker-thread-status ":ACTIVITY: Handling ~S" activity)
             (apply (task-type-function activity) input)))
       (use-value (&rest new-value)

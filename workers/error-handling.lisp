@@ -9,7 +9,7 @@
 	 (with-output-to-string (s) (ignore-errors
 				      (let ((sb-ext:*debug-print-variable-alist*
 					     (list (cons *print-length* 20) (cons *print-level* 6))))
-					(sb-debug:backtrace 20 s))))))
+					(sb-debug:backtrace 50 s))))))
 
     (log-error "~A"
                (with-output-to-string (message)
