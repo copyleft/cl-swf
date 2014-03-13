@@ -107,7 +107,8 @@
                                    (swf::internal-failure-error #'do-retry)
                                    (swf::service-unavailable-error #'do-retry)
                                    (swf::throttling-error #'do-retry))
-                      (apply function args)))
+                      (apply function args)
+                      (return)))
                   (sleep 15))))
       (terminate-workflow ()
         :report "Terminate this workflow exectuion and all child workflows."
