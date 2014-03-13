@@ -32,18 +32,10 @@
 
 
 (defun worker-start (worker type)
-  (with-error-handling
-    (loop with pause = 0 do
-          (handler-bind ((error (lambda (e)
-                                  (declare (ignore e))
-                                  (incf pause 5))))
-            (with-simple-restart (carry-on "Stop handle-next-task.")
-              (worker-handle-next-task worker type)
-              (decf pause)))
-          (setf pause (min 60 (max 0 pause)))
-          (when (plusp pause)
-            (set-worker-thread-status "~S: Rate limit pause: ~Ds" type pause)
-            (sleep pause)))))
+  (loop for error = (worker-handle-next-task worker type)
+        do (when error
+             (set-worker-thread-status "~S: Pause due to error" type)
+             (sleep 15))))
 
 
 (defun worker-start-thread (worker type)
@@ -51,6 +43,21 @@
                            (worker-start worker type))
                          :name (format nil "~S worker loop" type)
                          :arguments (list worker type)))
+
+
+(defun worker-handle-next-task (worker type)
+  (handler-bind ((error
+                  (lambda (error)
+                    (unless (typep error 'activity-error)
+                      (when *enable-debugging*
+                        (with-simple-restart (continue "Log error and look for next task.")
+                          (invoke-debugger error)))
+                      (report-error error)
+                      (return-from worker-handle-next-task error)))))
+    (let ((task (worker-look-for-task worker type)))
+      (when task
+        (worker-handle-task worker type task)
+        (values nil t)))))
 
 
 (defun worker-look-for-task (worker type)
@@ -74,13 +81,6 @@
       task)))
 
 
-(defun worker-handle-next-task (worker type)
-  (let ((task (worker-look-for-task worker type)))
-    (when task
-      (with-simple-restart (carry-on "Stop handling this ~A task." type)
-        (worker-handle-task worker type task)))))
-
-
 (defun worker-handle-task (worker type task)
   (set-worker-thread-status "~S: Handling task." type)
   (let ((*worker* worker)
@@ -93,22 +93,22 @@
               (:activity
                (worker-compute-activity-response task)))
           (set-worker-thread-status "~S: Sending response: ~S" type function)
-          (loop with pause = 5
-                for retry from 0 to 900
-                do
-                (with-simple-restart (carry-on "Retry send task response")
-                  (handler-case
-                      (progn
-                        (apply function args)
-                        (return))
-                    (swf::unknown-resource-error ()
-                      (return))))
-                (log-trace "~S: Will retry sending response after ~S seconds pause" type pause)
-                (set-worker-thread-status "~S: Retry ~S sending response: ~S" type retry function)
-                (sleep pause)))
-      (retry ()
-        :report "Retry handle task"
-        (worker-handle-task worker type task))
+          (flet ((do-retry (error)
+                   (when *enable-debugging*
+                     (with-simple-restart (continue "Log error and retry.")
+                       (invoke-debugger error)))
+                   (log-info "~S: An error occured while sending task reply, will retry after 15 seconds pause."
+                             type)
+                   (report-error error)
+                   (invoke-restart 'retry)))
+            (loop repeat 40 do
+                  (with-simple-restart (retry "Retry send task reponse")
+                    (handler-bind ((swf::http-error #'do-retry)
+                                   (swf::internal-failure-error #'do-retry)
+                                   (swf::service-unavailable-error #'do-retry)
+                                   (swf::throttling-error #'do-retry))
+                      (apply function args)))
+                  (sleep 15))))
       (terminate-workflow ()
         :report "Terminate this workflow exectuion and all child workflows."
         (swf::terminate-workflow-execution :child-policy :terminate
@@ -325,21 +325,9 @@
 
 (defun worker-compute-activity-response (task)
   (handler-case
-      (let ((*default-activity-error-reason* :error)
-            (*default-activity-error-details* nil))
-        (let (error)
-          (restart-case
-              (handler-bind ((error (lambda (e) (setf error e))))
-                (let ((value (compute-activity-task-value task)))
-                  (list #'swf::respond-activity-task-completed
-                        :result (serialize-object value)
-                        :task-token (aget task :task-token))))
-            (carry-on ()
-              :report "Fail activity"
-              (error 'activity-error
-                     :reason *default-activity-error-reason*
-                     :details (list* :condition (format nil "~A" error)
-                                     *default-activity-error-details*))))))
+      (list #'swf::respond-activity-task-completed
+            :result (serialize-object (compute-activity-task-value task))
+            :task-token (aget task :task-token))
     (activity-error (error)
       (list #'swf::respond-activity-task-failed
             :task-token (aget task :task-token)
@@ -353,14 +341,26 @@
 
 
 (defun compute-activity-task-value (task)
-  (restart-case
-      (let* ((activity-type (aget task :activity-type))
-             (activity (or (find-activity-type activity-type)
-                           (error "Could not find activity type ~S." activity-type)))
-             (input (deserialize-object (aget task :input))))
-        (set-worker-thread-status ":ACTIVITY: Handling ~S" activity)
-        (apply (task-type-function activity) input))
-    (use-value (&rest new-value)
-      :report "Return something else."
-      :interactive read-new-value
-      new-value)))
+  (let ((*default-activity-error-reason* :error)
+        (*default-activity-error-details* nil))
+    (restart-case
+        (handler-bind ((error
+                        (lambda (error)
+                          (unless (typep error 'activity-error)
+                            (with-simple-restart (continue "Log and wrap error in activity-error.")
+                              (invoke-debugger error))
+                            (report-error error)
+                            (error 'activity-error
+                                   :reason *default-activity-error-reason*
+                                   :details (list* :condition (format nil "~A" error)
+                                                   *default-activity-error-details*))))))
+          (let* ((activity-type (aget task :activity-type))
+                 (activity (or (find-activity-type activity-type)
+                               (error "Could not find activity type ~S." activity-type)))
+                 (input (deserialize-object (aget task :input))))
+            (set-worker-thread-status ":ACTIVITY: Handling ~S" activity)
+            (apply (task-type-function activity) input)))
+      (use-value (&rest new-value)
+        :report "Return something else."
+        :interactive read-new-value
+        new-value))))
