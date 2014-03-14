@@ -54,7 +54,9 @@
 
 
 (defclass workflow-execution-info (workflow-task)
-  ((context :initform nil)
+  ((run-id :initarg :run-id)
+   (workflow-id :initarg :workflow-id)
+   (context :initform nil)
    (old-context :initform nil)
    (decisions :initform nil)
    (events :initarg :events)
@@ -111,11 +113,15 @@
 
 
 (defun make-workflow-execution-info (&key events previous-started-event-id
-                                       started-event-id)
+                                       started-event-id
+                                       run-id
+                                       workflow-id)
   (let ((*wx* (make-instance 'workflow-execution-info
                              :events (map 'vector #'make-history-event events)
                              :previous-started-event-id previous-started-event-id
-                             :started-event-id started-event-id)))
+                             :started-event-id started-event-id
+                             :workflow-id workflow-id
+                             :run-id run-id)))
     (map nil #'update-history-with-event (slot-value *wx* 'events))
     *wx*))
 
@@ -235,7 +241,7 @@
     (decision-task-completed-event-id
      details
      reason)
-  (with-task (workflow-task)
+  (with-new-task (workflow-task)
     (%close)
     (%state :failed)))
 
@@ -491,7 +497,7 @@
      task-start-to-close-timeout
      workflow-id
      workflow-type)
-  (with-new-task (child-workflow workflow-id)
+  (with-new-task (child-workflow-task workflow-id)
     (%schedule)
     (%state :scheduled)))
 
@@ -509,7 +515,7 @@
     (initiated-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow workflow-execution)
+  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
     (%start)
     (%state :started)))
 
@@ -520,7 +526,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow workflow-execution)
+  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
     (%close)
     (%state :completed)))
 
@@ -532,7 +538,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow workflow-execution)
+  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
     (%close)
     (%state :failed)))
 
@@ -543,7 +549,7 @@
      timeout-type
      workflow-execution
      workflow-type)
-  (with-task (child-workflow workflow-execution)
+  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
     (%close)
     (%state :timed-out)))
 
@@ -554,7 +560,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow workflow-execution)
+  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
     (%close)
     (%state :canceled)))
 
@@ -564,7 +570,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow workflow-execution)
+  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
     (%close)
     (%state :terminated)))
 

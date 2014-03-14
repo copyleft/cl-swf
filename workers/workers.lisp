@@ -189,24 +189,38 @@
         (string-version (string version)))
     `(progn
        (defun ,name (&key ,@workflow-args
+                       control
                        child-policy
                        execution-start-to-close-timeout
                        tag-list
                        task-list
                        task-start-to-close-timeout
                        workflow-id)
-         (swf::start-workflow-execution
-          :child-policy child-policy
-          :execution-start-to-close-timeout execution-start-to-close-timeout
-          :input (serialize-object
-                  (list ,@(loop for arg in workflow-args
-                                collect (intern (symbol-name arg) :keyword)
-                                collect arg)))
-          :tag-list tag-list
-          :task-list task-list
-          :task-start-to-close-timeout task-start-to-close-timeout
-          :workflow-id (serialize-slot :workflow-id workflow-id)
-          :workflow-type (serialize-slot :workflow-type (get ',name 'task-type))))
+         (if (boundp '*wx*)
+             (start-child-workflow-execution-decision
+              :control control
+              :child-policy child-policy
+              :execution-start-to-close-timeout execution-start-to-close-timeout
+              :input (list ,@(loop for arg in workflow-args
+                                   collect (intern (symbol-name arg) :keyword)
+                                   collect arg))
+              :tag-list tag-list
+              :task-list task-list
+              :task-start-to-close-timeout task-start-to-close-timeout
+              :workflow-id workflow-id
+              :workflow-type (get ',name 'task-type))
+             (swf::start-workflow-execution
+              :child-policy child-policy
+              :execution-start-to-close-timeout execution-start-to-close-timeout
+              :input (serialize-object
+                      (list ,@(loop for arg in workflow-args
+                                    collect (intern (symbol-name arg) :keyword)
+                                    collect arg)))
+              :tag-list tag-list
+              :task-list task-list
+              :task-start-to-close-timeout task-start-to-close-timeout
+              :workflow-id (serialize-slot :workflow-id workflow-id)
+              :workflow-type (serialize-slot :workflow-type (get ',name 'task-type)))))
        (setf (get ',name 'task-type)
              (make-instance 'workflow-type
                             :name ',name
@@ -304,7 +318,15 @@
     (let ((*wx* (make-workflow-execution-info
                  :events (aget (%task-payload task) :events)
                  :previous-started-event-id (aget (%task-payload task) :previous-started-event-id)
-                 :started-event-id (aget (%task-payload task) :started-event-id))))
+                 :started-event-id (aget (%task-payload task) :started-event-id)
+                 :workflow-id (aget (deserialize-slot
+                                     :workflow-execution
+                                     (aget (%task-payload task) :workflow-execution))
+                                    :workflow-id)
+                 :run-id (aget (deserialize-slot
+                                     :workflow-execution
+                                     (aget (%task-payload task) :workflow-execution))
+                               :workflow-id))))
       (log-trace ":WORKFLOW: ~S start with context: ~S" workflow (slot-value *wx* 'context))
       (apply decider-function (event-input (task-started-event *wx*)))
       (log-trace ":WORKFLOW: ~S done with context: ~S" workflow (slot-value *wx* 'context))
