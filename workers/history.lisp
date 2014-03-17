@@ -486,7 +486,7 @@
     (initiated-event-id
      workflow-execution
      workflow-type)
-  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :started))
+  (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :started))
 
 
 (define-history-event child-workflow-execution-completed-event
@@ -495,7 +495,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :completed))
+  (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :completed))
 
 
 (define-history-event child-workflow-execution-failed-event
@@ -505,7 +505,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :failed))
+  (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :failed))
 
 
 (define-history-event child-workflow-execution-timed-out-event
@@ -514,7 +514,7 @@
      timeout-type
      workflow-execution
      workflow-type)
-  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :timed-out))
+  (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :timed-out))
 
 
 (define-history-event child-workflow-execution-canceled-event
@@ -523,7 +523,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :canceled))
+  (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :canceled))
 
 
 (define-history-event child-workflow-execution-terminated-event
@@ -531,7 +531,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :terminated))
+  (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :terminated))
 
 
 ;; External workflow ----------------------------------------------------------------------
