@@ -8,75 +8,108 @@
   ((id :initarg :id
        :reader event-id)
    (timestamp :initarg :timestamp
-              :reader event-timestamp)))
+              :reader event-timestamp)
+   (task :initform nil
+         :reader event-task)))
 
-(defgeneric get-event-type (type))
-(defgeneric update-history-with-event (event))
-
-(defun make-history-event (alist)
-  (multiple-value-bind (class attrs-slot)
-      (get-event-type (aget alist :event-type))
-    (apply #'make-instance class
-           :id (aget alist :event-id)
-           :timestamp (aget alist :event-timestamp)
-           (loop for (key . value ) in (aget alist attrs-slot)
-                 collect key
-                 collect (deserialize-slot key value)))))
-
-
-(defvar *wx*)
-
-(defvar *current-event*)
 
 (defclass task ()
-  ((state :initarg :state
-          :initform nil
-          :reader task-state)
-   (previous-state :initarg :previous-state
-                   :initform nil
-                   :reader task-previous-state)
-   (scheduled-event :initarg :scheduled-event
-                       :initform nil
-                       :reader task-scheduled-event)
-   (started-event :initform nil
-                     :reader task-started-event)
-   (closed-event :initform nil
-                    :reader task-closed-event)
-   (request-cancel-events :initform nil
-                             :reader task-request-cancel-events)))
+  ((id :initarg :id
+       :initform nil
+       :reader task-id)
+   (states :initform (make-hash-table)
+           :reader task-states)
+   (events :initform nil
+           :reader task-events)
+   (old-events :initform nil
+               :reader task-old-events)
+   (new-events :initform nil
+               :reader task-new-events)))
+
+
+(defun task-state-event (task state)
+  (first (gethash state  (task-states task))))
+
+
+(defun task-state (task)
+  (values (or (caar (task-events task)) :new)
+          (or (caar (task-old-events task)) :new)))
+
+
+(defmethod print-object ((task task) stream)
+  (print-unreadable-object (task stream :type t)
+    (multiple-value-bind (new-state old-state) (task-state task)
+      (format stream "~@[~S ~]~@[~A->~]~A ~A+~A=~A"
+              (task-id task)
+              (unless (eql old-state new-state) old-state)
+              new-state
+              (length (task-old-events task))
+              (length (task-new-events task))
+              (length (task-events task))))))
 
 
 (defclass decision-task (task) ())
 (defclass activity-task (task) ())
+(defclass timer-task (task) ())
+(defclass marker-task (task) ())
+(defclass signal-task (task) ())
 (defclass workflow-task (task) ())
 (defclass child-workflow-task (workflow-task) ())
-(defclass timer-task (task) ())
 
 
-(defclass workflow-execution-info (workflow-task)
+(defclass workflow-execution ()
   ((run-id :initarg :run-id)
    (workflow-id :initarg :workflow-id)
    (context :initform nil)
    (old-context :initform nil)
    (decisions :initform nil)
    (events :initarg :events)
+   (new-events :initarg :new-events)
    (previous-started-event-id :initarg :previous-started-event-id)
    (started-event-id :initarg :started-event-id)
-   (activity-tasks :initform (make-hash-table :test #'equal))
-   (decision-tasks :initform (make-hash-table))
-   (timer-tasks :initform (make-hash-table :test #'equal))
-   (child-workflow-tasks :initform (make-hash-table :test #'equal))
-   (markers :initform (make-hash-table))))
+   (workflow-task :initform (make-instance 'workflow-task))
+   (tasks :initform (make-hash-table :test #'equal))))
+
+
+(defun make-workflow-execution (&key events previous-started-event-id
+                                  started-event-id
+                                  run-id
+                                  workflow-id)
+  (let* ((events (map 'vector #'make-history-event events))
+         (wx (make-instance 'workflow-execution
+                            :events events
+                            :new-events (coerce (subseq events previous-started-event-id) 'list)
+                            :previous-started-event-id previous-started-event-id
+                            :started-event-id started-event-id
+                            :workflow-id workflow-id
+                            :run-id run-id)))
+    (loop for event across events do
+          (setf (slot-value event 'task) (index-event wx event)))
+    wx))
+
+
+(defun get-event (wx id)
+  (aref (slot-value wx 'events) (1- id)))
+
+
+;; Functions operating on current workflow execution (wx) ------------------------------------------
+
+
+(defvar *wx*)
+
+
+(defun workflow-task ()
+  (slot-value *wx* 'workflow-task))
 
 
 (defun started-timestamp ()
   "Timestamp when this worklfow execution started."
-  (event-timestamp (task-started-event *wx*)))
+  (event-timestamp (task-state-event (workflow-task) :started)))
 
 
 (defun current-timestamp ()
   "The current timestamp, ie. the timestamp when this decision task started."
-  (event-timestamp (get-event (slot-value *wx* 'started-event-id))))
+  (event-timestamp (get-event *wx* (slot-value *wx* 'started-event-id))))
 
 
 (defun current-runtime ()
@@ -85,8 +118,11 @@
 
 
 (defun new-events ()
-  (with-slots (events previous-started-event-id) *wx*
-    (coerce (subseq events previous-started-event-id) 'list)))
+  (slot-value *wx* 'new-events))
+
+
+(defun updated-tasks ()
+  (remove nil (remove-duplicates (mapcar #'event-task (new-events)))))
 
 
 (defun context (key &optional default)
@@ -97,98 +133,50 @@
   (setf (getf (slot-value *wx* 'context) key default) new-value))
 
 
-(defun %record-marker (marker-name)
-  (push *current-event* (gethash marker-name (slot-value *wx* 'markers))))
+;; Tasks -------------------------------------------------------------------------------------------
 
 
-(defun get-marker-events (marker-name)
-  (gethash marker-name (slot-value *wx* 'markers)))
+(defun add-task (wx task-type id)
+  (setf (gethash (cons task-type id) (slot-value wx 'tasks))
+        (make-instance task-type :id id)))
 
 
-(defun marker-details (marker-name &optional default)
-  (let ((event (first (get-marker-events marker-name))))
-    (if event
-        (values (event-details event) t)
-        (values default nil))))
+(defun find-task (wx task-type id)
+  (if (eq 'workflow-task task-type)
+      (slot-value wx 'workflow-task)
+      (gethash (cons task-type id) (slot-value wx 'tasks))))
 
 
-(defun make-workflow-execution-info (&key events previous-started-event-id
-                                       started-event-id
-                                       run-id
-                                       workflow-id)
-  (let ((*wx* (make-instance 'workflow-execution-info
-                             :events (map 'vector #'make-history-event events)
-                             :previous-started-event-id previous-started-event-id
-                             :started-event-id started-event-id
-                             :workflow-id workflow-id
-                             :run-id run-id)))
-    (map nil #'update-history-with-event (slot-value *wx* 'events))
-    *wx*))
+(defun update-task (wx event task-type id state)
+  (let ((task (or (find-task wx task-type id)
+                   (add-task wx task-type id)))
+        (state+event (cons state event)))
+    (push event (gethash state (task-states task)))
+    (push state+event (slot-value task 'events))
+    (if (< (slot-value wx 'previous-started-event-id) (event-id event))
+        (push state+event (slot-value task 'new-events))
+        (push state+event (slot-value task 'old-events)))
+    task))
 
 
-(defun get-event (id)
-  (with-slots (events) *wx*
-    (aref events (1- id))))
+(defun new-task (wx event task-type id state)
+  (add-task wx task-type id)
+  (update-task wx event task-type id state))
 
 
-(defvar *task*)
+(defgeneric index-event (wx event))
+(defgeneric get-event-type (type))
 
 
-(defun get-tasks-table (type)
-  (slot-value *wx* (ecase type
-                     (activity-task 'activity-tasks)
-                     (decision-task 'decision-tasks)
-                     (timer-task 'timer-tasks)
-                     (child-workflow-task 'child-workflow-tasks))))
-
-
-(defun get-task (type &optional id error-p)
-  (case type
-    (workflow-task *wx*)
-    (otherwise
-     (or (gethash id (get-tasks-table type))
-         (when error-p
-           (error "Task not found: ~S ~S" type id))))))
-
-
-(defun get-timer (id)
-  (get-task 'timer-task id))
-
-
-(defun get-activity (id)
-  (get-task 'activity-task id))
-
-
-(defun %add-task (type &optional id)
-  (let ((tasks (get-tasks-table type)))
-    (let ((task (make-instance type)))
-      (setf (gethash id tasks) task)
-      task)))
-
-(defmacro with-new-task ((type &optional id) &body body)
-  `(let ((*task* (%add-task ',type ,id)))
-     ,@body))
-
-(defmacro with-task ((type &optional id) &body body)
-  `(let ((*task* (get-task ',type ,id)))
-     ,@body))
-
-(defun %state (new-state)
-  (setf (slot-value *task* 'state) new-state)
-  (when (< (event-id *current-event*) (slot-value *wx* 'previous-started-event-id))
-    (setf (slot-value *task* 'previous-state) new-state)))
-
-(defun %schedule ()
-  (slot-value *task* 'scheduled-event) *current-event*)
-
-(defun %start ()
-  (setf (slot-value *task* 'started-event) *current-event*))
-
-(defun %close ()
-  (setf (slot-value *task* 'closed-event) *current-event*))
-
-(defun %request-cancel ()
-  (push *current-event* (slot-value *task* 'request-cancel-events)))
+(defun make-history-event (alist)
+  (multiple-value-bind (class attrs-slot)
+      (get-event-type (aget alist :event-type))
+    (apply #'make-instance class
+           :id (aget alist :event-id)
+           :timestamp (aget alist :event-timestamp)
+           (loop for (key . value ) in (aget alist attrs-slot)
+                 collect key
+                 collect (deserialize-slot key value)))))
 
 
 (defmacro define-history-event (name slots &body body)
@@ -204,10 +192,84 @@
                                                     :keyword))))
        (values ',name
                ,(intern (format nil "~A-ATTRIBUTES" name) :keyword)))
-     (defmethod update-history-with-event ((*current-event* ,name))
+     (defmethod index-event (wx (event ,name))
        (with-slots (id ,@slots)
-           *current-event*
-         ,@body))))
+           event
+         (flet ((%new-task (task-type id state)
+                  (new-task wx event task-type id state))
+                (%update-task (task-type id state)
+                  (update-task wx event task-type id state))
+                (%get-event (event-id)
+                  (get-event wx event-id)))
+           (declare (ignorable (function %new-task)
+                               (function %update-task)
+                               (function %get-event)))
+           ,@body)))))
+
+
+;; Marker events -----------------------------------------------------------------------------------
+
+
+(define-history-event marker-recorded-event
+    (decision-task-completed-event-id
+     details
+     marker-name)
+  (%new-task 'marker-task marker-name :recorded))
+
+
+(define-history-event record-marker-failed-event
+    (cause
+     decision-task-completed-event-id
+     marker-name)
+  (%new-task 'marker-task marker-name :record-failed))
+
+
+;; Signal events -----------------------------------------------------------------------------------
+
+
+(define-history-event workflow-execution-signaled-event
+    (external-initiated-event-id
+     external-workflow-execution
+     input
+     signal-name)
+  (%new-task 'signal-task signal-name :signaled))
+
+
+;; Timer events ------------------------------------------------------------------------------------
+
+
+(define-history-event timer-started-event
+    (control
+     decision-task-completed-event-id
+     start-to-fire-timeout
+     timer-id)
+  (%new-task 'timer-task timer-id :started))
+
+
+(define-history-event start-timer-failed-event
+    (cause
+     decision-task-completed-event-id
+     timer-id)
+  (%new-task 'timer-task timer-id :start-failed))
+
+
+(define-history-event timer-fired-event
+    (started-event-id
+     timer-id)
+  (%update-task 'timer-task timer-id :fired))
+
+
+(define-history-event timer-canceled-event
+    (decision-task-completed-event-id
+     started-event-id
+     timer-id)
+  (%update-task 'timer-task timer-id :canceled))
+
+
+(define-history-event cancel-timer-failed-event
+    (cause
+     timer-id)
+  (%update-task 'timer-task timer-id :cancel-failed))
 
 
 ;; Workflow events -------------------------------------------------------------------------
@@ -224,42 +286,32 @@
      task-list
      task-start-to-close-timeout
      workflow-type)
-  (with-task (workflow-task)
-    (%start)
-    (%state :started)))
+  (%update-task 'workflow-task nil :started))
 
 
 (define-history-event workflow-execution-completed-event
     (decision-task-completed-event-id
      result)
-  (with-task (workflow-task)
-    (%close)
-    (%state :closed)))
+  (%update-task 'workflow-task nil :completed))
 
 
 (define-history-event workflow-execution-failed-event
     (decision-task-completed-event-id
      details
      reason)
-  (with-new-task (workflow-task)
-    (%close)
-    (%state :failed)))
+  (%update-task 'workflow-task nil :failed))
 
 
 (define-history-event workflow-execution-timed-out-event
     (child-policy
      timeout-type)
-  (with-task (workflow-task)
-    (%close)
-    (%state :timed-out)))
+  (%update-task 'workflow-task nil :timed-out))
 
 
 (define-history-event workflow-execution-canceled-event
     (decision-task-completed-event-id
      details)
-  (with-task (workflow-task)
-    (%close)
-    (%state :canceled)))
+  (%update-task 'workflow-task nil :canceled))
 
 
 (define-history-event workflow-execution-terminated-event
@@ -267,9 +319,7 @@
      child-policy
      details
      reason)
-  (with-task (workflow-task)
-    (%close)
-    (%state :terminated)))
+  (%update-task 'workflow-task nil :terminated))
 
 
 (define-history-event workflow-execution-continued-as-new-event
@@ -282,22 +332,20 @@
      task-list
      task-start-to-close-timeout
      workflow-type)
-  (with-task (workflow-task)
-    (%close)
-    (%state :continued-as-new)))
+  (%update-task 'workflow-task nil :continued-as-new))
 
 
 (define-history-event continue-as-new-workflow-execution-failed-event
     (cause
-     decision-task-completed-event-id))
+     decision-task-completed-event-id)
+  (%update-task 'workflow-task nil :continue-as-new-failed))
 
 
 (define-history-event workflow-execution-cancel-requested-event
     (cause
      external-initiated-event-id
      external-workflow-execution)
-  (with-task (workflow-task)
-    (%request-cancel)))
+  (%update-task 'workflow-task nil :cancel-requested))
 
 
 ;; Decision events -------------------------------------------------------------------------
@@ -306,38 +354,30 @@
 (define-history-event decision-task-scheduled-event
     (start-to-close-timeout
      task-list)
-  (with-new-task (decision-task id)
-    (%schedule)
-    (%state :scheduled)))
+  (%new-task 'decision-task id :scheduled))
 
 
 (define-history-event decision-task-started-event
     (identity
      scheduled-event-id)
-  (with-task (decision-task scheduled-event-id)
-    (%start)
-    (%state :started)))
+  (%update-task 'decision-task scheduled-event-id :started))
 
 
 (define-history-event decision-task-completed-event
     (execution-context
      scheduled-event-id
      started-event-id)
-  (with-task (decision-task scheduled-event-id)
-    (%close)
-    (%state :completed)
-    (when execution-context
-      (setf (slot-value *wx* 'old-context) (copy-tree execution-context))
-      (setf (slot-value *wx* 'context) execution-context))))
+  (when execution-context
+    (setf (slot-value wx 'old-context) (copy-tree execution-context))
+    (setf (slot-value wx 'context) execution-context))
+  (%update-task 'decision-task scheduled-event-id :completed))
 
 
 (define-history-event decision-task-timed-out-event
     (scheduled-event-id
      started-event-id
      timeout-type)
-  (with-task (decision-task scheduled-event-id)
-    (%close)
-    (%state :timed-out)))
+  (%update-task 'decision-task scheduled-event-id :timed-out))
 
 
 ;; Activity events -------------------------------------------------------------------------
@@ -354,33 +394,28 @@
      schedule-to-start-timeout
      start-to-close-timeout
      task-list)
-  (with-new-task (activity-task activity-id)
-    (%schedule)
-    (%state :scheduled)))
+  (%new-task 'activity-task activity-id :scheduled))
 
 
-(define-history-event schedule-activity-task-failed-event ; TODO
+(define-history-event schedule-activity-task-failed-event
     (activity-id
      activity-type
      cause
-     decision-task-completed-event-id))
+     decision-task-completed-event-id)
+  (%new-task 'activity-task activity-id :schedule-failed))
 
 
 (define-history-event activity-task-started-event
     (identity
      scheduled-event-id)
-  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
-    (%start)
-    (%state :started)))
+  (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :started))
 
 
 (define-history-event activity-task-completed-event
     (result
      scheduled-event-id
      started-event-id)
-  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
-    (%close)
-    (%state :completed)))
+  (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :completed))
 
 
 (define-history-event activity-task-failed-event
@@ -388,9 +423,7 @@
      reason
      scheduled-event-id
      started-event-id)
-  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
-    (%close)
-    (%state :failed)))
+  (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :failed))
 
 
 (define-history-event activity-task-timed-out-event
@@ -398,9 +431,7 @@
      scheduled-event-id
      started-event-id
      timeout-type)
-  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
-    (%close)
-    (%state :timed-out)))
+  (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :timed-out))
 
 
 (define-history-event activity-task-canceled-event
@@ -408,79 +439,20 @@
      latest-cancel-requested-event-id
      scheduled-event-id
      started-event-id)
-  (with-task (activity-task (event-activity-id (get-event scheduled-event-id)))
-    (%close)
-    (%state :canceled)))
+  (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :canceled))
 
 
 (define-history-event activity-task-cancel-requested-event
     (activity-id
      decision-task-completed-event-id)
-  (with-task (activity-task activity-id)
-    (%request-cancel)))
+  (%update-task 'activity-task activity-id :cancel-requested))
 
 
-(define-history-event request-cancel-activity-task-failed-event ; TODO
+(define-history-event request-cancel-activity-task-failed-event
     (activity-id
      cause
-     decision-task-completed-event-id))
-
-
-;; Misc events -------------------------------------------------------------------------
-
-
-(define-history-event workflow-execution-signaled-event ; TODO
-    (external-initiated-event-id
-     external-workflow-execution
-     input
-     signal-name))
-
-
-(define-history-event marker-recorded-event ; TODO
-    (decision-task-completed-event-id
-     details
-     marker-name))
-
-
-;; Timer events -------------------------------------------------------------------------
-
-
-(define-history-event timer-started-event
-    (control
-     decision-task-completed-event-id
-     start-to-fire-timeout
-     timer-id)
-  (with-new-task (timer-task timer-id)
-    (%start)
-    (%state :started)))
-
-
-(define-history-event start-timer-failed-event ; TODO
-    (cause
-     decision-task-completed-event-id
-     timer-id))
-
-
-(define-history-event timer-fired-event
-    (started-event-id
-     timer-id)
-  (with-task (timer-task timer-id)
-    (%close)
-    (%state :fired)))
-
-
-(define-history-event timer-canceled-event
-    (decision-task-completed-event-id
-     started-event-id
-     timer-id)
-  (with-task (timer-task timer-id)
-    (%close)
-    (%state :canceled)))
-
-
-(define-history-event cancel-timer-failed-event ; TODO
-    (cause
-     timer-id))
+     decision-task-completed-event-id)
+  (%new-task 'activity-task activity-id :request-cancel-failed))
 
 
 ;; Child workflow -------------------------------------------------------------------------
@@ -497,27 +469,24 @@
      task-start-to-close-timeout
      workflow-id
      workflow-type)
-  (with-new-task (child-workflow-task workflow-id)
-    (%schedule)
-    (%state :scheduled)))
+  (%new-task 'child-workflow-task workflow-id :initiated))
 
 
-(define-history-event start-child-workflow-execution-failed-event ; TODO
+(define-history-event start-child-workflow-execution-failed-event
     (cause
      control
      decision-task-completed-event-id
      initiated-event-id
      workflow-id
-     workflow-type))
+     workflow-type)
+  (%new-task 'child-workflow-task workflow-id :start-failed))
 
 
 (define-history-event child-workflow-execution-started-event
     (initiated-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
-    (%start)
-    (%state :started)))
+  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :started))
 
 
 (define-history-event child-workflow-execution-completed-event
@@ -526,9 +495,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
-    (%close)
-    (%state :completed)))
+  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :completed))
 
 
 (define-history-event child-workflow-execution-failed-event
@@ -538,9 +505,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
-    (%close)
-    (%state :failed)))
+  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :failed))
 
 
 (define-history-event child-workflow-execution-timed-out-event
@@ -549,9 +514,7 @@
      timeout-type
      workflow-execution
      workflow-type)
-  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
-    (%close)
-    (%state :timed-out)))
+  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :timed-out))
 
 
 (define-history-event child-workflow-execution-canceled-event
@@ -560,9 +523,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
-    (%close)
-    (%state :canceled)))
+  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :canceled))
 
 
 (define-history-event child-workflow-execution-terminated-event
@@ -570,9 +531,7 @@
      started-event-id
      workflow-execution
      workflow-type)
-  (with-task (child-workflow-task (aget workflow-execution :workflow-id))
-    (%close)
-    (%state :terminated)))
+  (%update-task 'child-workflow (aget workflow-execution :workflow-id) :terminated))
 
 
 ;; External workflow ----------------------------------------------------------------------

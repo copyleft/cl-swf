@@ -315,7 +315,7 @@
                        (error "Could find workflow type ~S." workflow-type)))
          (decider-function (task-type-function workflow )))
     (set-worker-thread-status ":WORKFLOW: Handling ~S" workflow)
-    (let ((*wx* (make-workflow-execution-info
+    (let ((*wx* (make-workflow-execution
                  :events (aget (%task-payload task) :events)
                  :previous-started-event-id (aget (%task-payload task) :previous-started-event-id)
                  :started-event-id (aget (%task-payload task) :started-event-id)
@@ -328,7 +328,9 @@
                                      (aget (%task-payload task) :workflow-execution))
                                :workflow-id))))
       (log-trace ":WORKFLOW: ~S start with context: ~S" workflow (slot-value *wx* 'context))
-      (apply decider-function (event-input (task-started-event *wx*)))
+      (dolist (task (updated-tasks))
+        (log-trace ":WORKFLOW: ~S updated task ~S" workflow task))
+      (apply decider-function (event-input (task-state-event (workflow-task) :started)))
       (log-trace ":WORKFLOW: ~S done with context: ~S" workflow (slot-value *wx* 'context))
       (log-trace ":WORKFLOW: ~S made ~S decision~:P." workflow (length (slot-value *wx* 'decisions)))
       (values (unless (equal (slot-value *wx* 'old-context) (slot-value *wx* 'context))
