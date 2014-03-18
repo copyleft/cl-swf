@@ -4,19 +4,33 @@
 (declaim (optimize (speed 0) (space 0) (debug 3)))
 
 
-(defclass history-event ()
+(defclass event ()
   ((id :initarg :id
        :reader event-id)
    (timestamp :initarg :timestamp
               :reader event-timestamp)
+   (is-new :initarg :is-new
+           :reader event-is-new)
    (task :initform nil
          :reader event-task)))
+
+
+(defmethod print-object ((event event) stream)
+  (print-unreadable-object (event stream :type t)
+    (format stream "~A~:[~;*~] ~A"
+            (event-id event)
+            (event-is-new event)
+            (event-timestamp event))))
 
 
 (defclass task ()
   ((id :initarg :id
        :initform nil
        :reader task-id)
+   (new-state :initform nil
+              :reader task-new-state)
+   (old-state :initform nil
+              :reader task-old-state)
    (states :initform (make-hash-table)
            :reader task-states)
    (events :initform nil
@@ -32,17 +46,20 @@
 
 
 (defun task-state (task)
-  (values (or (caar (task-events task)) :new)
-          (or (caar (task-old-events task)) :new)))
+  (values (or (task-new-state task)
+              (task-old-state task)
+              :new)
+          (or (task-old-state task)
+              :new)))
 
 
 (defmethod print-object ((task task) stream)
   (print-unreadable-object (task stream :type t)
-    (multiple-value-bind (new-state old-state) (task-state task)
+    (multiple-value-bind (state old-state) (task-state task)
       (format stream "~@[~S ~]~@[~A->~]~A ~A+~A=~A"
               (task-id task)
-              (unless (eql old-state new-state) old-state)
-              new-state
+              (unless (eql old-state state) old-state)
+              state
               (length (task-old-events task))
               (length (task-new-events task))
               (length (task-events task))))))
@@ -75,7 +92,9 @@
                                   started-event-id
                                   run-id
                                   workflow-id)
-  (let* ((events (map 'vector #'make-history-event events))
+  (let* ((events (map 'vector (lambda (event)
+                                (make-event previous-started-event-id event))
+                      events))
          (wx (make-instance 'workflow-execution
                             :events events
                             :new-events (coerce (subseq events previous-started-event-id) 'list)
@@ -100,6 +119,14 @@
 
 (defun workflow-task ()
   (slot-value *wx* 'workflow-task))
+
+(defun workflow (&key is became)
+  (let ((task (slot-value *wx* 'workflow-task)))
+    (and (or (null is)
+             (eq is (task-state task)))
+         (or (null became)
+             (let ((event (task-state-event task became)))
+               (and event (event-is-new event)))))))
 
 
 (defun started-timestamp ()
@@ -133,6 +160,10 @@
   (setf (getf (slot-value *wx* 'context) key default) new-value))
 
 
+
+
+
+
 ;; Tasks -------------------------------------------------------------------------------------------
 
 
@@ -153,9 +184,13 @@
         (state+event (cons state event)))
     (push event (gethash state (task-states task)))
     (push state+event (slot-value task 'events))
-    (if (< (slot-value wx 'previous-started-event-id) (event-id event))
+    (if (event-is-new event)
         (push state+event (slot-value task 'new-events))
         (push state+event (slot-value task 'old-events)))
+    (unless (eql state :cancel-requested)
+      (if (event-is-new event)
+          (setf (slot-value task 'new-state) state)
+          (setf (slot-value task 'old-state) state)))
     task))
 
 
@@ -168,20 +203,22 @@
 (defgeneric get-event-type (type))
 
 
-(defun make-history-event (alist)
+(defun make-event (previous-started-event-id alist)
   (multiple-value-bind (class attrs-slot)
       (get-event-type (aget alist :event-type))
-    (apply #'make-instance class
-           :id (aget alist :event-id)
-           :timestamp (aget alist :event-timestamp)
-           (loop for (key . value ) in (aget alist attrs-slot)
-                 collect key
-                 collect (deserialize-slot key value)))))
+    (let ((id (aget alist :event-id)))
+      (apply #'make-instance class
+             :id id
+             :timestamp (aget alist :event-timestamp)
+             :is-new (< previous-started-event-id id)
+             (loop for (key . value ) in (aget alist attrs-slot)
+                   collect key
+                   collect (deserialize-slot key value))))))
 
 
-(defmacro define-history-event (name slots &body body)
+(defmacro define-event (name slots &body body)
   `(progn
-     (defclass ,name (history-event)
+     (defclass ,name (event)
        ,(loop for slot-name in slots
               collect `(,slot-name
                         :initarg ,(intern (symbol-name slot-name) :keyword)
@@ -210,14 +247,14 @@
 ;; Marker events -----------------------------------------------------------------------------------
 
 
-(define-history-event marker-recorded-event
+(define-event marker-recorded-event
     (decision-task-completed-event-id
      details
      marker-name)
   (%new-task 'marker-task marker-name :recorded))
 
 
-(define-history-event record-marker-failed-event
+(define-event record-marker-failed-event
     (cause
      decision-task-completed-event-id
      marker-name)
@@ -227,7 +264,7 @@
 ;; Signal events -----------------------------------------------------------------------------------
 
 
-(define-history-event workflow-execution-signaled-event
+(define-event workflow-execution-signaled-event
     (external-initiated-event-id
      external-workflow-execution
      input
@@ -238,7 +275,7 @@
 ;; Timer events ------------------------------------------------------------------------------------
 
 
-(define-history-event timer-started-event
+(define-event timer-started-event
     (control
      decision-task-completed-event-id
      start-to-fire-timeout
@@ -246,27 +283,27 @@
   (%new-task 'timer-task timer-id :started))
 
 
-(define-history-event start-timer-failed-event
+(define-event start-timer-failed-event
     (cause
      decision-task-completed-event-id
      timer-id)
   (%new-task 'timer-task timer-id :start-failed))
 
 
-(define-history-event timer-fired-event
+(define-event timer-fired-event
     (started-event-id
      timer-id)
   (%update-task 'timer-task timer-id :fired))
 
 
-(define-history-event timer-canceled-event
+(define-event timer-canceled-event
     (decision-task-completed-event-id
      started-event-id
      timer-id)
   (%update-task 'timer-task timer-id :canceled))
 
 
-(define-history-event cancel-timer-failed-event
+(define-event cancel-timer-failed-event
     (cause
      timer-id)
   (%update-task 'timer-task timer-id :cancel-failed))
@@ -275,7 +312,7 @@
 ;; Workflow events -------------------------------------------------------------------------
 
 
-(define-history-event workflow-execution-started-event
+(define-event workflow-execution-started-event
     (child-policy
      continued-execution-run-id
      execution-start-to-close-timeout
@@ -289,32 +326,32 @@
   (%update-task 'workflow-task nil :started))
 
 
-(define-history-event workflow-execution-completed-event
+(define-event workflow-execution-completed-event
     (decision-task-completed-event-id
      result)
   (%update-task 'workflow-task nil :completed))
 
 
-(define-history-event workflow-execution-failed-event
+(define-event workflow-execution-failed-event
     (decision-task-completed-event-id
      details
      reason)
   (%update-task 'workflow-task nil :failed))
 
 
-(define-history-event workflow-execution-timed-out-event
+(define-event workflow-execution-timed-out-event
     (child-policy
      timeout-type)
   (%update-task 'workflow-task nil :timed-out))
 
 
-(define-history-event workflow-execution-canceled-event
+(define-event workflow-execution-canceled-event
     (decision-task-completed-event-id
      details)
   (%update-task 'workflow-task nil :canceled))
 
 
-(define-history-event workflow-execution-terminated-event
+(define-event workflow-execution-terminated-event
     (cause
      child-policy
      details
@@ -322,7 +359,7 @@
   (%update-task 'workflow-task nil :terminated))
 
 
-(define-history-event workflow-execution-continued-as-new-event
+(define-event workflow-execution-continued-as-new-event
     (child-policy
      decision-task-completed-event-id
      execution-start-to-close-timeout
@@ -335,13 +372,13 @@
   (%update-task 'workflow-task nil :continued-as-new))
 
 
-(define-history-event continue-as-new-workflow-execution-failed-event
+(define-event continue-as-new-workflow-execution-failed-event
     (cause
      decision-task-completed-event-id)
   (%update-task 'workflow-task nil :continue-as-new-failed))
 
 
-(define-history-event workflow-execution-cancel-requested-event
+(define-event workflow-execution-cancel-requested-event
     (cause
      external-initiated-event-id
      external-workflow-execution)
@@ -351,19 +388,19 @@
 ;; Decision events -------------------------------------------------------------------------
 
 
-(define-history-event decision-task-scheduled-event
+(define-event decision-task-scheduled-event
     (start-to-close-timeout
      task-list)
   (%new-task 'decision-task id :scheduled))
 
 
-(define-history-event decision-task-started-event
+(define-event decision-task-started-event
     (identity
      scheduled-event-id)
   (%update-task 'decision-task scheduled-event-id :started))
 
 
-(define-history-event decision-task-completed-event
+(define-event decision-task-completed-event
     (execution-context
      scheduled-event-id
      started-event-id)
@@ -373,7 +410,7 @@
   (%update-task 'decision-task scheduled-event-id :completed))
 
 
-(define-history-event decision-task-timed-out-event
+(define-event decision-task-timed-out-event
     (scheduled-event-id
      started-event-id
      timeout-type)
@@ -383,7 +420,7 @@
 ;; Activity events -------------------------------------------------------------------------
 
 
-(define-history-event activity-task-scheduled-event
+(define-event activity-task-scheduled-event
     (activity-id
      activity-type
      control
@@ -397,7 +434,7 @@
   (%new-task 'activity-task activity-id :scheduled))
 
 
-(define-history-event schedule-activity-task-failed-event
+(define-event schedule-activity-task-failed-event
     (activity-id
      activity-type
      cause
@@ -405,20 +442,20 @@
   (%new-task 'activity-task activity-id :schedule-failed))
 
 
-(define-history-event activity-task-started-event
+(define-event activity-task-started-event
     (identity
      scheduled-event-id)
   (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :started))
 
 
-(define-history-event activity-task-completed-event
+(define-event activity-task-completed-event
     (result
      scheduled-event-id
      started-event-id)
   (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :completed))
 
 
-(define-history-event activity-task-failed-event
+(define-event activity-task-failed-event
     (details
      reason
      scheduled-event-id
@@ -426,7 +463,7 @@
   (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :failed))
 
 
-(define-history-event activity-task-timed-out-event
+(define-event activity-task-timed-out-event
     (details
      scheduled-event-id
      started-event-id
@@ -434,7 +471,7 @@
   (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :timed-out))
 
 
-(define-history-event activity-task-canceled-event
+(define-event activity-task-canceled-event
     (details
      latest-cancel-requested-event-id
      scheduled-event-id
@@ -442,13 +479,13 @@
   (%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)) :canceled))
 
 
-(define-history-event activity-task-cancel-requested-event
+(define-event activity-task-cancel-requested-event
     (activity-id
      decision-task-completed-event-id)
   (%update-task 'activity-task activity-id :cancel-requested))
 
 
-(define-history-event request-cancel-activity-task-failed-event
+(define-event request-cancel-activity-task-failed-event
     (activity-id
      cause
      decision-task-completed-event-id)
@@ -458,7 +495,7 @@
 ;; Child workflow -------------------------------------------------------------------------
 
 
-(define-history-event start-child-workflow-execution-initiated-event
+(define-event start-child-workflow-execution-initiated-event
     (child-policy
      control
      decision-task-completed-event-id
@@ -472,7 +509,7 @@
   (%new-task 'child-workflow-task workflow-id :initiated))
 
 
-(define-history-event start-child-workflow-execution-failed-event
+(define-event start-child-workflow-execution-failed-event
     (cause
      control
      decision-task-completed-event-id
@@ -482,14 +519,14 @@
   (%new-task 'child-workflow-task workflow-id :start-failed))
 
 
-(define-history-event child-workflow-execution-started-event
+(define-event child-workflow-execution-started-event
     (initiated-event-id
      workflow-execution
      workflow-type)
   (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :started))
 
 
-(define-history-event child-workflow-execution-completed-event
+(define-event child-workflow-execution-completed-event
     (initiated-event-id
      result
      started-event-id
@@ -498,7 +535,7 @@
   (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :completed))
 
 
-(define-history-event child-workflow-execution-failed-event
+(define-event child-workflow-execution-failed-event
     (details
      initiated-event-id
      reason
@@ -508,7 +545,7 @@
   (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :failed))
 
 
-(define-history-event child-workflow-execution-timed-out-event
+(define-event child-workflow-execution-timed-out-event
     (initiated-event-id
      started-event-id
      timeout-type
@@ -517,7 +554,7 @@
   (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :timed-out))
 
 
-(define-history-event child-workflow-execution-canceled-event
+(define-event child-workflow-execution-canceled-event
     (details
      initiated-event-id
      started-event-id
@@ -526,7 +563,7 @@
   (%update-task 'child-workflow-task (aget workflow-execution :workflow-id) :canceled))
 
 
-(define-history-event child-workflow-execution-terminated-event
+(define-event child-workflow-execution-terminated-event
     (initiated-event-id
      started-event-id
      workflow-execution
@@ -537,7 +574,7 @@
 ;; External workflow ----------------------------------------------------------------------
 
 
-(define-history-event signal-external-workflow-execution-initiated-event ; TODO
+(define-event signal-external-workflow-execution-initiated-event ; TODO
     (control
      decision-task-completed-event-id
      input
@@ -546,12 +583,12 @@
      workflow-id))
 
 
-(define-history-event external-workflow-execution-signaled-event ; TODO
+(define-event external-workflow-execution-signaled-event ; TODO
     (initiated-event-id
      workflow-execution))
 
 
-(define-history-event signal-external-workflow-execution-failed-event ; TODO
+(define-event signal-external-workflow-execution-failed-event ; TODO
     (cause
      control
      decision-task-completed-event-id
@@ -560,19 +597,19 @@
      workflow-id))
 
 
-(define-history-event request-cancel-external-workflow-execution-initiated-event ; TODO
+(define-event request-cancel-external-workflow-execution-initiated-event ; TODO
     (control
      decision-task-completed-event-id
      run-id
      workflow-id))
 
 
-(define-history-event external-workflow-execution-cancel-requested-event ; TODO
+(define-event external-workflow-execution-cancel-requested-event ; TODO
     (initiated-event-id
      workflow-execution))
 
 
-(define-history-event request-cancel-external-workflow-execution-failed-event ; TODO
+(define-event request-cancel-external-workflow-execution-failed-event ; TODO
     (cause
      control
      decision-task-completed-event-id
