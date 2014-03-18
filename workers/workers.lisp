@@ -25,23 +25,24 @@
              :reader worker-packages)))
 
 
-(defun set-worker-thread-status (format-control &rest args)
-  (log-trace "SWF-WORKER: ~?" format-control args)
+(defun set-worker-thread-status (type format-control &rest args)
+  (log-trace "~?" format-control args)
   (setf (sb-thread:thread-name sb-thread:*current-thread*)
-        (format nil "SWF-WORKER: ~?" format-control args)))
+        (format nil "~A-WORKER: ~?" type format-control args)))
 
 
 (defun worker-start (worker type)
-  (loop for error = (worker-handle-next-task worker type)
-        do (when error
-             (set-worker-thread-status "~S: Pause due to error" type)
-             (sleep 15))))
+  (with-log-context type
+    (loop for error = (worker-handle-next-task worker type)
+          do (when error
+               (set-worker-thread-status type "Pause due to error")
+               (sleep 15)))))
 
 
 (defun worker-start-thread (worker type)
   (sb-thread:make-thread (lambda (worker type)
                            (worker-start worker type))
-                         :name (format nil "~S worker loop" type)
+                         :name (format nil "~A-WORKER: Init" type)
                          :arguments (list worker type)))
 
 
@@ -58,8 +59,12 @@
                         (return-from worker-handle-next-task error)))))
       (let ((task (worker-look-for-task type)))
         (when task
-          (worker-handle-task type task)
-          (values nil t))))))
+          (with-log-context (task-workflow-id task)
+            (with-log-context (let ((ttype (or (aget (%task-payload task) :workflow-type)
+                                               (aget (%task-payload task) :activity-type))))
+                                (format nil "~A/~A" (aget ttype :name) (aget ttype :version)))
+              (worker-handle-task type task)
+              (values nil t))))))))
 
 
 (defclass %task ()
@@ -71,6 +76,9 @@
 (defun task-token (task)
   (aget (%task-payload task) :task-token))
 
+(defun task-workflow-id (task)
+  (aget (%task-payload task) :workflow-execution :workflow-id))
+
 (defmethod print-object ((task %decision-task) stream)
   (print-unreadable-object (task stream :type t)
     (format stream "~S" (aget (%task-payload task) :workflow-type))))
@@ -81,7 +89,7 @@
 
 
 (defun worker-look-for-task (type)
-  (set-worker-thread-status "~S: Looking for task." type)
+  (set-worker-thread-status type "Looking for task.")
   (let ((task (ecase type
                 (:workflow
                  (let ((response (swf::poll-for-decision-task :all-pages t
@@ -95,13 +103,13 @@
                    (when (aget response :task-token)
                      (make-instance '%activity-task :payload response)))))))
     (if task
-        (log-trace "~S: Got task ~S" type task)
-        (log-trace "~S: Got no task." type))
+        (log-trace "Got task ~S" task)
+        (log-trace "Got no task."))
     task))
 
 
 (defun worker-handle-task (type task)
-  (set-worker-thread-status "~S: Handling task: ~S" type task)
+  (set-worker-thread-status type "Handling task: ~S" task)
   (restart-case
       (destructuring-bind (function &rest args)
           (ecase type
@@ -109,7 +117,7 @@
              (worker-compute-workflow-response task))
             (:activity
              (worker-compute-activity-response task)))
-        (set-worker-thread-status "~S: Sending response: ~S" type function)
+        (set-worker-thread-status type "Sending response: ~S" function)
         (flet ((do-retry (error)
                  (when *enable-debugging*
                    (with-simple-restart (continue "Log error and retry.")
@@ -314,7 +322,7 @@
          (workflow (or (find-workflow-type workflow-type)
                        (error "Could find workflow type ~S." workflow-type)))
          (decider-function (task-type-function workflow )))
-    (set-worker-thread-status ":WORKFLOW: Handling ~S" workflow)
+    (set-worker-thread-status :workflow "Handling ~S" workflow)
     (let ((*wx* (make-workflow-execution
                  :events (aget (%task-payload task) :events)
                  :previous-started-event-id (aget (%task-payload task) :previous-started-event-id)
@@ -327,12 +335,12 @@
                                      :workflow-execution
                                      (aget (%task-payload task) :workflow-execution))
                                :workflow-id))))
-      (log-trace ":WORKFLOW: ~S start with context: ~S" workflow (slot-value *wx* 'context))
+      (log-trace "Start with context: ~S" (slot-value *wx* 'context))
       (dolist (task (updated-tasks))
-        (log-trace ":WORKFLOW: ~S updated task ~S" workflow task))
+        (log-trace "Updated task ~S" task))
       (apply decider-function (event-input (task-state-event (workflow-task) :started)))
-      (log-trace ":WORKFLOW: ~S done with context: ~S" workflow (slot-value *wx* 'context))
-      (log-trace ":WORKFLOW: ~S made ~S decision~:P." workflow (length (slot-value *wx* 'decisions)))
+      (log-trace "Done with context: ~S" (slot-value *wx* 'context))
+      (log-trace "Made ~S decision~:P." (length (slot-value *wx* 'decisions)))
       (values (unless (equal (slot-value *wx* 'old-context) (slot-value *wx* 'context))
                 (serialize-object (slot-value *wx* 'context)))
               (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions)))))))
@@ -400,7 +408,7 @@
                  (activity (or (find-activity-type activity-type)
                                (error "Could not find activity type ~S." activity-type)))
                  (input (deserialize-object (aget (%task-payload task) :input))))
-            (set-worker-thread-status ":ACTIVITY: Handling ~S" activity)
+            (set-worker-thread-status :activity "Handling ~S" activity)
             (apply (task-type-function activity) input)))
       (use-value (&rest new-value)
         :report "Return something else."
