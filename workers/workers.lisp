@@ -233,8 +233,7 @@
              (make-instance 'workflow-type
                             :name ',name
                             :function (lambda (&key ,@workflow-args)
-                                        (block nil
-                                          ,@body))
+                                        ,@body)
                             :timeout ,timeout
                             :options (list :name ,string-name
                                            :version ,string-version
@@ -336,10 +335,15 @@
                                      (aget (%task-payload task) :workflow-execution))
                                :workflow-id))))
       (log-trace "Start with context: ~S" (slot-value *wx* 'context))
-      (dolist (task (updated-tasks))
-        (log-trace "Updated task ~S" task))
-      (apply decider-function (event-input (task-state-event (workflow-task) :started)))
-      (log-trace "Done with context: ~S" (slot-value *wx* 'context))
+      (let ((input (event-input (slot-value (workflow-task) 'started-event))))
+        (dolist (*event* (new-events))
+          (cond ((slot-value *wx* 'ignore-events)
+                 (log-trace "Ignoring new event: ~S" *event*))
+                (t
+                 (log-trace "Processing new event: ~S" *event*)
+                 (log-trace "Task: ~S ~S" (event-task-event-slot *event*) (event-task *event*))
+                 (apply decider-function input)
+                 (log-trace "Context: ~S" (slot-value *wx* 'context))))))
       (log-trace "Made ~S decision~:P." (length (slot-value *wx* 'decisions)))
       (values (unless (equal (slot-value *wx* 'old-context) (slot-value *wx* 'context))
                 (serialize-object (slot-value *wx* 'context)))
