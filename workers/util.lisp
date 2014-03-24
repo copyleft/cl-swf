@@ -124,6 +124,9 @@ keyword or the string must not contain a : (colon), / (slash),
       :activity-id
       :workflow-id)
      (serialize-id value))
+    ((:workflow-execution)
+     (alist :run-id (aget value :run-id)
+            :workflow-id (serialize-id (aget value :workflow-id))))
     ((:details
       :result
       :input

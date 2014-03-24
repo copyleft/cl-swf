@@ -81,7 +81,8 @@
                       events))
          (wx (make-instance 'workflow-execution
                             :events events
-                            :new-events (coerce (subseq events previous-started-event-id) 'list)
+                            :new-events (when previous-started-event-id
+                                          (coerce (subseq events previous-started-event-id) 'list))
                             :previous-started-event-id previous-started-event-id
                             :started-event-id started-event-id
                             :workflow-id workflow-id
@@ -93,6 +94,23 @@
 
 (defun get-event (wx id)
   (aref (slot-value wx 'events) (1- id)))
+
+
+(defun get-workflow-execution (execution)
+  (make-workflow-execution
+   :workflow-id (aget execution :workflow-id)
+   :run-id (aget execution :run-id)
+   :events (aget (swf::get-workflow-execution-history
+                  :all-pages t
+                  :execution (serialize-slot :workflow-execution execution))
+                 :events)))
+
+
+(defmacro with-workflow-execution ((worker execution) &body body)
+  `(let* ((*worker* ,worker)
+          (swf::*service* (worker-service *worker*))
+          (*wx* (get-workflow-execution ,execution)))
+     ,@body))
 
 
 ;; Functions operating on current workflow execution (wx) and event  -------------------------------
@@ -160,6 +178,17 @@
   ;; TODO: works only during completed event
   (event-result *event*))
 
+(defun activity-failed-reason ()
+  ;; TODO: works only during completed event
+  (event-reason *event*))
+
+(defun activity-failed-details ()
+  ;; TODO: works only during completed event
+  (event-details *event*))
+
+(defun is-marker-recorded? (id)
+  (find-task *wx* 'marker-task id))
+
 ;; Current event / task functions
 
 (defun task ()
@@ -174,6 +203,8 @@
 (defun event? (event)
   (eq event (event-task-event-slot *event*)))
 
+(defun last-event? ()
+  (= (event-id *event*) (length (slot-value *wx* 'events))))
 
 ;; Tests for event types
 
@@ -272,7 +303,7 @@
       (apply #'make-instance class
              :id id
              :timestamp (aget alist :event-timestamp)
-             :is-new (< previous-started-event-id id)
+             :is-new (and previous-started-event-id (< previous-started-event-id id))
              (loop for (key . value ) in (aget alist attrs-slot)
                    collect key
                    collect (deserialize-slot key value))))))
