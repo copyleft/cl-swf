@@ -336,7 +336,7 @@
                  :run-id (aget (deserialize-slot
                                      :workflow-execution
                                      (aget (%task-payload task) :workflow-execution))
-                               :workflow-id))))
+                               :run-id))))
       (log-trace "Start with context: ~S" (slot-value *wx* 'context))
       (let ((input (event-input (slot-value (workflow-task) 'started-event))))
         (dolist (*event* (new-events))
