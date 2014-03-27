@@ -121,6 +121,7 @@ keyword or the string must not contain a : (colon), / (slash),
   (case slot
     ((:timer-id
       :marker-name
+      :signal-name
       :activity-id
       :workflow-id)
      (serialize-id value))
@@ -144,6 +145,7 @@ keyword or the string must not contain a : (colon), / (slash),
   (case slot
     ((:timer-id
       :marker-name
+      :signal-name
       :activity-id
       :workflow-id)
      (deserialize-id value))

@@ -262,7 +262,10 @@
                                     description)
                            &body body)
   (let ((string-name (string name))
-        (string-version (string version)))
+        (string-version (string version))
+        (args-list (loop for arg in activity-args
+                         collect (intern (symbol-name arg) :keyword)
+                         collect arg)))
     `(progn
        (defun ,name (&key ,@activity-args
                        activity-id
@@ -272,18 +275,18 @@
                        schedule-to-start-timeout
                        start-to-close-timeout
                        task-list)
-         (schedule-activity-task-decision
-          :activity-id activity-id
-          :activity-type (get ',name 'task-type)
-          :control control
-          :heartbeat-timeout heartbeat-timeout
-          :input (list ,@(loop for arg in activity-args
-                               collect (intern (symbol-name arg) :keyword)
-                               collect arg))
-          :schedule-to-close-timeout schedule-to-close-timeout
-          :schedule-to-start-timeout schedule-to-start-timeout
-          :start-to-close-timeout start-to-close-timeout
-          :task-list task-list))
+         (if (boundp '*wx*)
+             (schedule-activity-task-decision
+              :activity-id activity-id
+              :activity-type (get ',name 'task-type)
+              :control control
+              :heartbeat-timeout heartbeat-timeout
+              :input (list ,@args-list)
+              :schedule-to-close-timeout schedule-to-close-timeout
+              :schedule-to-start-timeout schedule-to-start-timeout
+              :start-to-close-timeout start-to-close-timeout
+              :task-list task-list)
+             (apply-activity-task-function (get ',name 'task-type) (list ,@args-list))))
        (setf (get ',name 'task-type)
              (make-instance 'activity-type
                             :name ',name
@@ -395,6 +398,15 @@
 
 
 (defun compute-activity-task-value (task)
+  (let* ((activity-type (aget (%task-payload task) :activity-type))
+         (activity (or (find-activity-type activity-type)
+                       (error "Could not find activity type ~S." activity-type)))
+         (input (deserialize-object (aget (%task-payload task) :input))))
+    (set-worker-thread-status :activity "Handling ~S" activity)
+    (apply-activity-task-function activity input)))
+
+
+(defun apply-activity-task-function (activity args)
   (let ((*default-activity-error-reason* :error)
         (*default-activity-error-details* nil))
     (restart-case
@@ -408,12 +420,7 @@
                                    :reason *default-activity-error-reason*
                                    :details (list* :condition (format nil "~A" error)
                                                    *default-activity-error-details*))))))
-          (let* ((activity-type (aget (%task-payload task) :activity-type))
-                 (activity (or (find-activity-type activity-type)
-                               (error "Could not find activity type ~S." activity-type)))
-                 (input (deserialize-object (aget (%task-payload task) :input))))
-            (set-worker-thread-status :activity "Handling ~S" activity)
-            (apply (task-type-function activity) input)))
+          (apply (task-type-function activity) args))
       (use-value (&rest new-value)
         :report "Return something else."
         :interactive read-new-value
