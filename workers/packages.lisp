@@ -3,6 +3,7 @@
   (:use #:common-lisp
         #:swf-logging)
   (:export
+   #:context
    ;; Test for task types
    #:marker?
    #:signal?

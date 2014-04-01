@@ -24,7 +24,8 @@
            :version (getf options :version))))
 
 
-(defclass workflow-type (task-type) ())
+(defclass workflow-type (task-type)
+  ((context :initarg :context :reader task-type-context)))
 (defclass activity-type (task-type) ())
 
 (defgeneric ensure-task-type (task-type))

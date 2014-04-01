@@ -183,35 +183,51 @@
 ;;; Defining workflows ----------------------------------------------------------------------------
 
 
+(defun parse-lambda-list (lambda-list)
+  (assert (or (null lambda-list)
+              (eq '&key (car lambda-list)))
+          () "Lambda list must start with &key")
+  (loop for arg in (cdr lambda-list)
+        for arg-name = (if (symbolp arg) arg (car arg))
+        collect (intern (symbol-name arg-name) :keyword)
+        collect arg-name))
+
+
 (defmacro define-workflow (name
-                           (&rest workflow-args)
+                           (&rest lambda-list)
                               (&key (version :1)
                                     (timeout 10)
                                     default-child-policy
                                     default-execution-start-to-close-timeout
                                     (default-task-list "default")
                                     default-task-start-to-close-timeout
-                                    description)
+                                    description
+                                    context)
                            &body body)
-  (let ((string-name (string name))
-        (string-version (string version)))
+  (let* ((string-name (string name))
+         (string-version (string version))
+         (args-list (parse-lambda-list lambda-list))
+         (context (loop for var-def in context
+                        if (consp var-def)
+                        collect (car var-def) and collect (cadr var-def)
+                        else
+                        collect var-def and collect nil))
+         (context-keys (loop for key in context by #'cddr collect key)))
     `(progn
-       (defun ,name (&key ,@workflow-args
-                       control
-                       child-policy
-                       execution-start-to-close-timeout
-                       tag-list
-                       task-list
-                       task-start-to-close-timeout
-                       workflow-id)
+       (defun ,name (,@(or lambda-list (list '&key))
+                     control
+                     child-policy
+                     execution-start-to-close-timeout
+                     tag-list
+                     task-list
+                     task-start-to-close-timeout
+                     workflow-id)
          (if (boundp '*wx*)
              (start-child-workflow-execution-decision
               :control control
               :child-policy child-policy
               :execution-start-to-close-timeout execution-start-to-close-timeout
-              :input (list ,@(loop for arg in workflow-args
-                                   collect (intern (symbol-name arg) :keyword)
-                                   collect arg))
+              :input (list ,@args-list)
               :tag-list tag-list
               :task-list task-list
               :task-start-to-close-timeout task-start-to-close-timeout
@@ -221,9 +237,7 @@
               :child-policy child-policy
               :execution-start-to-close-timeout execution-start-to-close-timeout
               :input (serialize-object
-                      (list ,@(loop for arg in workflow-args
-                                    collect (intern (symbol-name arg) :keyword)
-                                    collect arg)))
+                      (list ,@args-list))
               :tag-list tag-list
               :task-list task-list
               :task-start-to-close-timeout task-start-to-close-timeout
@@ -232,9 +246,15 @@
        (setf (get ',name 'task-type)
              (make-instance 'workflow-type
                             :name ',name
-                            :function (lambda (&key ,@workflow-args)
-                                        ,@body)
+                            :function (lambda (,@lambda-list)
+                                        (macrolet ((context (key)
+                                                     (unless (member key ',context-keys)
+                                                       (warn "Unknown context variable ~S" key))
+                                                     `(%context ,key)))
+                                          (block ,name
+                                            ,@body)))
                             :timeout ,timeout
+                            :context ',context
                             :options (list :name ,string-name
                                            :version ,string-version
                                            :default-child-policy
@@ -252,7 +272,7 @@
 
 
 (defmacro define-activity (name
-                           (&rest activity-args)
+                           (&rest lambda-list)
                               (&key (version :1)
                                     (default-task-heartbeat-timeout :none)
                                     (default-task-list "default")
@@ -263,18 +283,16 @@
                            &body body)
   (let ((string-name (string name))
         (string-version (string version))
-        (args-list (loop for arg in activity-args
-                         collect (intern (symbol-name arg) :keyword)
-                         collect arg)))
+        (args-list (parse-lambda-list lambda-list)))
     `(progn
-       (defun ,name (&key ,@activity-args
-                       activity-id
-                       control
-                       heartbeat-timeout
-                       schedule-to-close-timeout
-                       schedule-to-start-timeout
-                       start-to-close-timeout
-                       task-list)
+       (defun ,name (,@(or lambda-list (list '&key))
+                     activity-id
+                     control
+                     heartbeat-timeout
+                     schedule-to-close-timeout
+                     schedule-to-start-timeout
+                     start-to-close-timeout
+                     task-list)
          (if (boundp '*wx*)
              (schedule-activity-task-decision
               :activity-id activity-id
@@ -290,8 +308,9 @@
        (setf (get ',name 'task-type)
              (make-instance 'activity-type
                             :name ',name
-                            :function (lambda (&key ,@activity-args)
-                                        ,@body)
+                            :function (lambda (,@lambda-list)
+                                        (block ,name
+                                          ,@body))
                             :options (list :name ,string-name
                                            :version ,string-version
                                            :default-task-heartbeat-timeout
@@ -326,6 +345,7 @@
          (decider-function (task-type-function workflow )))
     (set-worker-thread-status :workflow "Handling ~S" workflow)
     (let ((*wx* (make-workflow-execution
+                 :context (task-type-context workflow)
                  :events (aget (%task-payload task) :events)
                  :previous-started-event-id (aget (%task-payload task) :previous-started-event-id)
                  :started-event-id (aget (%task-payload task) :started-event-id)
@@ -339,18 +359,24 @@
                                :run-id))))
       (log-trace "Start with context: ~S" (slot-value *wx* 'context))
       (let ((input (event-input (slot-value (workflow-task) 'started-event))))
-        (dolist (*event* (new-events))
-          (cond ((slot-value *wx* 'ignore-events)
-                 (log-trace "Ignoring new event: ~S" *event*))
-                (t
-                 (log-trace "Processing new event: ~S" *event*)
-                 (log-trace "Task: ~S ~S" (event-task-event-slot *event*) (event-task *event*))
-                 (apply decider-function input)
-                 (log-trace "Context: ~S" (slot-value *wx* 'context))))))
+        (apply decider-function input))
+      (log-trace "Done with context: ~S" (slot-value *wx* 'context))
       (log-trace "Made ~S decision~:P." (length (slot-value *wx* 'decisions)))
       (values (unless (equal (slot-value *wx* 'old-context) (slot-value *wx* 'context))
                 (serialize-object (slot-value *wx* 'context)))
               (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions)))))))
+
+;; TODO abort facility?
+(defun do-with-new-events (function)
+  (dolist (*event* (new-events))
+    (log-trace "Processing new event: ~S" *event*)
+    (log-trace "Task: ~S ~S" (event-task-event-slot *event*) (event-task *event*))
+    (funcall function)
+    (log-trace "Context: ~S" (slot-value *wx* 'context))))
+
+
+(defmacro with-new-events (&body body)
+  `(do-with-new-events (lambda () ,@body)))
 
 
 ;;; Handling activity tasks ------------------------------------------------------------------------

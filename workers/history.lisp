@@ -60,10 +60,9 @@
 (defclass workflow-execution ()
   ((run-id :initarg :run-id)
    (workflow-id :initarg :workflow-id)
-   (context :initform nil)
+   (context :initarg :context)
    (old-context :initform nil)
    (decisions :initform nil)
-   (ignore-events :initform nil)
    (events :initarg :events)
    (new-events :initarg :new-events)
    (previous-started-event-id :initarg :previous-started-event-id)
@@ -75,11 +74,13 @@
 (defun make-workflow-execution (&key events previous-started-event-id
                                   started-event-id
                                   run-id
-                                  workflow-id)
+                                  workflow-id
+                                  context)
   (let* ((events (map 'vector (lambda (event)
                                 (make-event previous-started-event-id event))
                       events))
          (wx (make-instance 'workflow-execution
+                            :context context
                             :events events
                             :new-events (when previous-started-event-id
                                           (coerce (subseq events previous-started-event-id) 'list))
@@ -123,29 +124,23 @@
   (slot-value *wx* 'new-events))
 
 
-(defun ignore-remaining-events ()
-  (setf (slot-value *wx* 'ignore-events) t))
-
-
 (defun updated-tasks ()
   (remove nil (remove-duplicates (mapcar #'event-task (new-events)))))
 
 
-(defun context (key &optional default)
-  (getf (slot-value *wx* 'context) key default))
+(defun %context (key)
+  (getf (slot-value *wx* 'context) key))
 
 
-(defun (setf context) (new-value key &optional default)
-  (setf (getf (slot-value *wx* 'context) key default) new-value))
+(defun (setf %context) (new-value key)
+  (setf (getf (slot-value *wx* 'context) key) new-value))
 
 
 (defmacro with-context ((&rest vars) &body body)
   `(symbol-macrolet
-       (,@(loop for var-def in vars
-                for name = (if (consp var-def) (first var-def) var-def)
-                for keyword = (intern (string name) :keyword)
-                for default = (when (consp var-def) (second var-def))
-                collect `(,name (context ,keyword ,default))))
+       (,@(loop for var in vars
+                for keyword = (intern (string var) :keyword)
+                collect `(,var (context ,keyword))))
      ,@body))
 
 
@@ -185,6 +180,24 @@
 (defun activity-failed-details ()
   ;; TODO: works only during completed event
   (event-details *event*))
+
+(defun reschedule-activity ()
+  ;; TODO: works only during completed event
+  (with-slots (activity-id activity-type control heartbeat-timeout input
+                           schedule-to-close-timeout schedule-to-start-timeout
+                           start-to-close-timeout task-list)
+      (slot-value (task) 'scheduled-event)
+    (incf (getf control :try 0))
+    (schedule-activity-task-decision :activity-id activity-id
+                                     :activity-type activity-type
+                                     :control control
+                                     :heartbeat-timeout heartbeat-timeout
+                                     :input input
+                                     :schedule-to-close-timeout schedule-to-close-timeout
+                                     :schedule-to-start-timeout schedule-to-start-timeout
+                                     :start-to-close-timeout start-to-close-timeout
+                                     :task-list task-list)))
+
 
 (defun is-marker-recorded? (id)
   (find-task *wx* 'marker-task id))
@@ -262,6 +275,7 @@
   (and (type? 'child-workflow-task)
        (or (null id)
            (id? id))))
+
 
 ;; Tasks -------------------------------------------------------------------------------------------
 
