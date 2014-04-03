@@ -60,8 +60,7 @@
 (defclass workflow-execution ()
   ((run-id :initarg :run-id)
    (workflow-id :initarg :workflow-id)
-   (context :initarg :context)
-   (old-context :initform nil)
+   (context :initform nil)
    (decisions :initform nil)
    (events :initarg :events)
    (new-events :initarg :new-events)
@@ -74,13 +73,11 @@
 (defun make-workflow-execution (&key events previous-started-event-id
                                   started-event-id
                                   run-id
-                                  workflow-id
-                                  context)
+                                  workflow-id)
   (let* ((events (map 'vector (lambda (event)
                                 (make-event previous-started-event-id event))
                       events))
          (wx (make-instance 'workflow-execution
-                            :context context
                             :events events
                             :new-events (when previous-started-event-id
                                           (coerce (subseq events previous-started-event-id) 'list))
@@ -132,6 +129,10 @@
   (getf (slot-value *wx* 'context) key))
 
 
+(defun %context-boundp (key)
+  (not (eq '%%unbound (getf (slot-value *wx* 'context) key '%%unbound))))
+
+
 (defun (setf %context) (new-value key)
   (setf (getf (slot-value *wx* 'context) key) new-value))
 
@@ -169,9 +170,27 @@
 (defun is-cancel-requested? ()
   (slot-boundp (workflow-task) 'cancel-requested-event))
 
+(defun timer-control (&optional key default)
+  ;; TODO: works only during completed event
+  (if key
+      (getf (timer-control) key default)
+      (event-control (slot-value (task) 'started-event))))
+
 (defun activity-result ()
   ;; TODO: works only during completed event
   (event-result *event*))
+
+(defun child-workflow-id ()
+  ;; TODO: works only during completed event
+  (task-id (task)))
+
+(defun child-workflow-result ()
+  ;; TODO: works only during completed event
+  (event-result *event*))
+
+(defun child-workflow-start-failed-cause ()
+  ;; TODO: works only during completed event
+  (event-cause *event*))
 
 (defun activity-failed-reason ()
   ;; TODO: works only during completed event
@@ -201,6 +220,30 @@
 
 (defun is-marker-recorded? (id)
   (find-task *wx* 'marker-task id))
+
+
+(defun start-timer (id seconds &rest control)
+  (start-timer-decision :timer-id (or id (make-uuid))
+                        :start-to-fire-timeout seconds
+                        :control control))
+
+
+(defun complete-workflow (&optional result)
+  (complete-workflow-execution-decision :result result)
+  (throw 'exit-decider nil))
+
+
+(defun fail-workflow (reason &optional details)
+  (retract-decisions)
+  (fail-workflow-execution-decision :reason reason :details details)
+  (throw 'exit-decider nil))
+
+
+(defun cancel-workflow (&optional details)
+  (retract-decisions)
+  (cancel-workflow-execution-decision :details details)
+  (throw 'exit-decider nil))
+
 
 ;; Current event / task functions
 
@@ -551,7 +594,6 @@
      scheduled-event-id
      started-event-id)
   (when execution-context
-    (setf (slot-value wx 'old-context) (copy-tree execution-context))
     (setf (slot-value wx 'context) execution-context))
   (%update-task 'decision-task scheduled-event-id))
 

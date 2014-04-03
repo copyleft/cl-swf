@@ -3,7 +3,13 @@
   (:use #:common-lisp
         #:swf-logging)
   (:export
+   #:define-activity
+   #:define-workflow
    #:context
+   #:start-timer
+   #:complete-workflow
+   #:cancel-workflow
+   #:fail-workflow
    ;; Test for task types
    #:marker?
    #:signal?

@@ -4,6 +4,24 @@
 
 ;; TODO: Check for duplicate workflow and activties types in a worker
 
+(defun find-workflow-execution (workflow-id)
+  (swf::with-service ()
+    (let* ((time-filter `((:oldest-date . ,(local-time:timestamp- (local-time:now) 1 :year))))
+           (execution-filter (serialize-slot :workflow-id workflow-id))
+           (executions (or (aget (swf::list-open-workflow-executions :start-time-filter time-filter
+                                                                    :execution-filter execution-filter)
+                                :execution-infos)
+                          (aget (swf::list-closed-workflow-executions :start-time-filter time-filter
+                                                                      :execution-filter execution-filter)
+                                :execution-infos))))
+      (deserialize-slot :workflow-execution (aget (car executions) :execution)))))
+
+
+(find-workflow-execution "44b-sending")
+(find-workflow-execution "43q-sending")
+
+
+
 ;;; Common worker ----------------------------------------------------------------------------------
 
 
@@ -193,79 +211,90 @@
         collect arg-name))
 
 
+(defun parse-options (options &rest list-options)
+  (loop for (key . value) in options
+        collect key
+        collect (if (member key list-options)
+                    value
+                    (car value))))
+
+
 (defmacro define-workflow (name
                            (&rest lambda-list)
-                              (&key (version :1)
-                                    (timeout 10)
-                                    default-child-policy
-                                    default-execution-start-to-close-timeout
-                                    (default-task-list "default")
-                                    default-task-start-to-close-timeout
-                                    description
-                                    context)
+                              (&body options)
                            &body body)
-  (let* ((string-name (string name))
-         (string-version (string version))
-         (args-list (parse-lambda-list lambda-list))
-         (context (loop for var-def in context
-                        if (consp var-def)
-                        collect (car var-def) and collect (cadr var-def)
-                        else
-                        collect var-def and collect nil))
-         (context-keys (loop for key in context by #'cddr collect key)))
-    `(progn
-       (defun ,name (,@(or lambda-list (list '&key))
-                     control
-                     child-policy
-                     execution-start-to-close-timeout
-                     tag-list
-                     task-list
-                     task-start-to-close-timeout
-                     workflow-id)
-         (if (boundp '*wx*)
-             (start-child-workflow-execution-decision
-              :control control
-              :child-policy child-policy
-              :execution-start-to-close-timeout execution-start-to-close-timeout
-              :input (list ,@args-list)
-              :tag-list tag-list
-              :task-list task-list
-              :task-start-to-close-timeout task-start-to-close-timeout
-              :workflow-id workflow-id
-              :workflow-type (get ',name 'task-type))
-             (swf::start-workflow-execution
-              :child-policy child-policy
-              :execution-start-to-close-timeout execution-start-to-close-timeout
-              :input (serialize-object
-                      (list ,@args-list))
-              :tag-list tag-list
-              :task-list task-list
-              :task-start-to-close-timeout task-start-to-close-timeout
-              :workflow-id (serialize-slot :workflow-id workflow-id)
-              :workflow-type (serialize-slot :workflow-type (get ',name 'task-type)))))
-       (setf (get ',name 'task-type)
-             (make-instance 'workflow-type
-                            :name ',name
-                            :function (lambda (,@lambda-list)
-                                        (macrolet ((context (key)
-                                                     (unless (member key ',context-keys)
-                                                       (warn "Unknown context variable ~S" key))
-                                                     `(%context ,key)))
-                                          (block ,name
-                                            ,@body)))
-                            :timeout ,timeout
-                            :context ',context
-                            :options (list :name ,string-name
-                                           :version ,string-version
-                                           :default-child-policy
-                                           ,default-child-policy
-                                           :default-execution-start-to-close-timeout
-                                           ,default-execution-start-to-close-timeout
-                                           :default-task-list
-                                           ,default-task-list
-                                           :default-task-start-to-close-timeout
-                                           ,default-task-start-to-close-timeout
-                                           :description ,description))))))
+  (destructuring-bind (&key ((:name external-name) name)
+                            (version :1)
+                            (timeout 10)
+                            default-child-policy
+                            default-execution-start-to-close-timeout
+                            (default-task-list "default")
+                            default-task-start-to-close-timeout
+                            description
+                            context)
+      (parse-options options :context)
+    (let* ((string-name (string external-name))
+           (string-version (string version))
+           (args-list (parse-lambda-list lambda-list))
+           (context (loop for var-def in context
+                          collect (if (consp var-def)
+                                      (cons (car var-def) (cadr var-def))
+                                      (cons var-def nil)))))
+      `(progn
+         (defun ,name (,@(or lambda-list (list '&key))
+                       control
+                       child-policy
+                       execution-start-to-close-timeout
+                       tag-list
+                       task-list
+                       task-start-to-close-timeout
+                       workflow-id)
+           (if (boundp '*wx*)
+               (start-child-workflow-execution-decision
+                :control control
+                :child-policy child-policy
+                :execution-start-to-close-timeout execution-start-to-close-timeout
+                :input (list ,@args-list)
+                :tag-list tag-list
+                :task-list task-list
+                :task-start-to-close-timeout task-start-to-close-timeout
+                :workflow-id workflow-id
+                :workflow-type (get ',name 'task-type))
+               (swf::start-workflow-execution
+                :child-policy child-policy
+                :execution-start-to-close-timeout execution-start-to-close-timeout
+                :input (serialize-object
+                        (list ,@args-list))
+                :tag-list tag-list
+                :task-list task-list
+                :task-start-to-close-timeout task-start-to-close-timeout
+                :workflow-id (serialize-slot :workflow-id workflow-id)
+                :workflow-type (serialize-slot :workflow-type (get ',name 'task-type)))))
+         (setf (get ',name 'task-type)
+               (make-instance 'workflow-type
+                              :name ',name
+                              :function (lambda (,@lambda-list)
+                                          ,@(loop for (key . init-form) in context
+                                                  collect `(unless (%context-boundp ,key)
+                                                             (setf (%context ,key) ,init-form)))
+                                          (macrolet ((context (key)
+                                                       (unless (member key ',context :key #'car)
+                                                         (warn "Unknown context variable ~S" key))
+                                                       `(%context ,key)))
+                                            (block ,name
+                                              ,@body)))
+                              :timeout ,timeout
+                              :options (list :name ,string-name
+                                             :version ,string-version
+                                             :default-child-policy
+                                             ,default-child-policy
+                                             :default-execution-start-to-close-timeout
+                                             ,default-execution-start-to-close-timeout
+                                             :default-task-list
+                                             ,default-task-list
+                                             :default-task-start-to-close-timeout
+                                             ,default-task-start-to-close-timeout
+                                             :description ,description)))))))
 
 
 ;;; Defining activities ----------------------------------------------------------------------------
@@ -273,57 +302,60 @@
 
 (defmacro define-activity (name
                            (&rest lambda-list)
-                              (&key (version :1)
-                                    (default-task-heartbeat-timeout :none)
-                                    (default-task-list "default")
-                                    (default-task-schedule-to-close-timeout :none)
-                                    (default-task-schedule-to-start-timeout :none)
-                                    (default-task-start-to-close-timeout :none)
-                                    description)
+                              (&body options)
                            &body body)
-  (let ((string-name (string name))
-        (string-version (string version))
-        (args-list (parse-lambda-list lambda-list)))
-    `(progn
-       (defun ,name (,@(or lambda-list (list '&key))
-                     activity-id
-                     control
-                     heartbeat-timeout
-                     schedule-to-close-timeout
-                     schedule-to-start-timeout
-                     start-to-close-timeout
-                     task-list)
-         (if (boundp '*wx*)
-             (schedule-activity-task-decision
-              :activity-id activity-id
-              :activity-type (get ',name 'task-type)
-              :control control
-              :heartbeat-timeout heartbeat-timeout
-              :input (list ,@args-list)
-              :schedule-to-close-timeout schedule-to-close-timeout
-              :schedule-to-start-timeout schedule-to-start-timeout
-              :start-to-close-timeout start-to-close-timeout
-              :task-list task-list)
-             (apply-activity-task-function (get ',name 'task-type) (list ,@args-list))))
-       (setf (get ',name 'task-type)
-             (make-instance 'activity-type
-                            :name ',name
-                            :function (lambda (,@lambda-list)
-                                        (block ,name
-                                          ,@body))
-                            :options (list :name ,string-name
-                                           :version ,string-version
-                                           :default-task-heartbeat-timeout
-                                           ,default-task-heartbeat-timeout
-                                           :default-task-list
-                                           ',default-task-list
-                                           :default-task-schedule-to-close-timeout
-                                           ,default-task-schedule-to-close-timeout
-                                           :default-task-schedule-to-start-timeout
-                                           ,default-task-schedule-to-start-timeout
-                                           :default-task-start-to-close-timeout
-                                           ,default-task-start-to-close-timeout
-                                           :description ,description))))))
+  (destructuring-bind (&key ((:name external-name) name)
+                            (version :1)
+                            (default-task-heartbeat-timeout :none)
+                            (default-task-list "default")
+                            (default-task-schedule-to-close-timeout :none)
+                            (default-task-schedule-to-start-timeout :none)
+                            (default-task-start-to-close-timeout :none)
+                            description)
+      (parse-options options)
+    (let ((string-name (string external-name))
+          (string-version (string version))
+          (args-list (parse-lambda-list lambda-list)))
+      `(progn
+         (defun ,name (,@(or lambda-list (list '&key))
+                       activity-id
+                       control
+                       heartbeat-timeout
+                       schedule-to-close-timeout
+                       schedule-to-start-timeout
+                       start-to-close-timeout
+                       task-list)
+           (if (boundp '*wx*)
+               (schedule-activity-task-decision
+                :activity-id activity-id
+                :activity-type (get ',name 'task-type)
+                :control control
+                :heartbeat-timeout heartbeat-timeout
+                :input (list ,@args-list)
+                :schedule-to-close-timeout schedule-to-close-timeout
+                :schedule-to-start-timeout schedule-to-start-timeout
+                :start-to-close-timeout start-to-close-timeout
+                :task-list task-list)
+               (apply-activity-task-function (get ',name 'task-type) (list ,@args-list))))
+         (setf (get ',name 'task-type)
+               (make-instance 'activity-type
+                              :name ',name
+                              :function (lambda (,@lambda-list)
+                                          (block ,name
+                                            ,@body))
+                              :options (list :name ,string-name
+                                             :version ,string-version
+                                             :default-task-heartbeat-timeout
+                                             ,default-task-heartbeat-timeout
+                                             :default-task-list
+                                             ',default-task-list
+                                             :default-task-schedule-to-close-timeout
+                                             ,default-task-schedule-to-close-timeout
+                                             :default-task-schedule-to-start-timeout
+                                             ,default-task-schedule-to-start-timeout
+                                             :default-task-start-to-close-timeout
+                                             ,default-task-start-to-close-timeout
+                                             :description ,description)))))))
 
 
 ;;; Handling workflow tasks ------------------------------------------------------------------------
@@ -345,7 +377,6 @@
          (decider-function (task-type-function workflow )))
     (set-worker-thread-status :workflow "Handling ~S" workflow)
     (let ((*wx* (make-workflow-execution
-                 :context (task-type-context workflow)
                  :events (aget (%task-payload task) :events)
                  :previous-started-event-id (aget (%task-payload task) :previous-started-event-id)
                  :started-event-id (aget (%task-payload task) :started-event-id)
@@ -359,11 +390,11 @@
                                :run-id))))
       (log-trace "Start with context: ~S" (slot-value *wx* 'context))
       (let ((input (event-input (slot-value (workflow-task) 'started-event))))
-        (apply decider-function input))
+        (catch 'exit-decider
+          (apply decider-function input)))
       (log-trace "Done with context: ~S" (slot-value *wx* 'context))
       (log-trace "Made ~S decision~:P." (length (slot-value *wx* 'decisions)))
-      (values (unless (equal (slot-value *wx* 'old-context) (slot-value *wx* 'context))
-                (serialize-object (slot-value *wx* 'context)))
+      (values (serialize-object (slot-value *wx* 'context))
               (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions)))))))
 
 ;; TODO abort facility?
