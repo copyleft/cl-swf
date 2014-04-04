@@ -217,6 +217,24 @@
                                      :start-to-close-timeout start-to-close-timeout
                                      :task-list task-list)))
 
+(defun continue-as-new ()
+  (with-slots (child-policy
+               execution-start-to-close-timeout
+               input
+               tag-list
+               task-list
+               task-start-to-close-timeout
+               workflow-type)
+      (slot-value (workflow-task) 'started-event)
+    (continue-as-new-workflow-execution-decision
+     :child-policy child-policy
+     :execution-start-to-close-timeout execution-start-to-close-timeout
+     :input input
+     :tag-list tag-list
+     :task-list task-list
+     :task-start-to-close-timeout task-start-to-close-timeout
+     :workflow-type-version (getf (task-type-options workflow-type) :version))))
+
 
 (defun is-marker-recorded? (id)
   (find-task *wx* 'marker-task id))

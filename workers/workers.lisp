@@ -154,9 +154,8 @@
                     (return)))
                 (sleep 15))))
     (terminate-workflow ()
-      :report "Terminate this workflow exectuion and all child workflows."
-      (swf::terminate-workflow-execution :child-policy :terminate
-                                         :details "Terminated by restart."
+      :report "Terminate this workflow execution."
+      (swf::terminate-workflow-execution :details "Terminated by restart."
                                          :run-id (aget (%task-payload task) :workflow-execution :run-id)
                                          :workflow-id (aget (%task-payload task) :workflow-execution :workflow-id)))))
 
