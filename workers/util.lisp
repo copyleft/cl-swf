@@ -27,21 +27,79 @@
 (defclass workflow-type (task-type) ())
 (defclass activity-type (task-type) ())
 
+
 (defgeneric ensure-task-type (task-type))
+
 
 (defmethod ensure-task-type ((workflow-type workflow-type))
   (handler-case
       (apply #'swf::register-workflow-type (task-type-options workflow-type))
     (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
+      (destructuring-bind (&key name
+                                version
+                                default-child-policy
+                                default-execution-start-to-close-timeout
+                                default-task-list
+                                default-task-start-to-close-timeout
+                                description)
+          (task-type-options workflow-type)
+        (macrolet ((test (expected current)
+                     `(unless (equal ,expected ,current)
+                        (cerror "Ignore the problem"
+                                "Workflow ~A/~A: ~A is ~S, expected ~S"
+                                name version
+                                ',expected ,current ,expected))))
+          (let* ((status :registered)
+                 (info (swf::describe-workflow-type :workflow-type (alist :name name
+                                                                          :version version))))
+            (test status (aget info :type-info :status))
+            (test description
+                  (aget info :type-info :description))
+            (test default-child-policy
+                  (aget info :configuration :default-child-policy))
+            (test default-execution-start-to-close-timeout
+                  (aget info :configuration :default-execution-start-to-close-timeout))
+            (test default-task-list
+                  (aget info :configuration :default-task-list))
+            (test default-task-start-to-close-timeout
+                  (aget info :configuration :default-task-start-to-close-timeout))))))))
+
 
 (defmethod ensure-task-type ((activity-type activity-type))
   (handler-case
       (apply #'swf::register-activity-type (task-type-options activity-type))
     (swf::type-already-exists-error ()
-      ;; TODO check if options are equal
-      )))
+      (destructuring-bind (&key name
+                                version
+                                default-task-heartbeat-timeout
+                                default-task-list
+                                default-task-schedule-to-close-timeout
+                                default-task-schedule-to-start-timeout
+                                default-task-start-to-close-timeout
+                                description)
+          (task-type-options activity-type)
+        (macrolet ((test (expected current)
+                     `(unless (equal ,expected ,current)
+                        (cerror "Ignore the problem"
+                                "Activity ~A/~A: ~A is ~S, expected ~S"
+                                name version
+                                ',expected ,current ,expected))))
+          (let* ((status :registered)
+                 (info (swf::describe-activity-type :activity-type (alist :name name
+                                                                          :version version))))
+            (test status (aget info :type-info :status))
+            (test description
+                  (aget info :type-info :description))
+            (test default-task-heartbeat-timeout
+                  (aget info :configuration :default-task-heartbeat-timeout))
+            (test default-task-list
+                  (aget info :configuration :default-task-list))
+            (test default-task-schedule-to-close-timeout
+                  (aget info :configuration :default-task-schedule-to-close-timeout))
+            (test default-task-schedule-to-start-timeout
+                  (aget info :configuration :default-task-schedule-to-start-timeout))
+            (test default-task-start-to-close-timeout
+                  (aget info :configuration :default-task-start-to-close-timeout))))))))
 
 
 ;;; Serialization ---------------------------------------------------------------------------------

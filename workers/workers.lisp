@@ -223,7 +223,7 @@
                               (&body options)
                            &body body)
   (destructuring-bind (&key ((:name external-name) name)
-                            (version :1)
+                            version
                             (timeout 10)
                             default-child-policy
                             default-execution-start-to-close-timeout
@@ -232,6 +232,7 @@
                             description
                             context)
       (parse-options options :context)
+    (assert version () "Version is missing")
     (let* ((string-name (string external-name))
            (string-version (string version))
            (args-list (parse-lambda-list lambda-list))
@@ -304,7 +305,7 @@
                               (&body options)
                            &body body)
   (destructuring-bind (&key ((:name external-name) name)
-                            (version :1)
+                            version
                             (default-task-heartbeat-timeout :none)
                             (default-task-list "default")
                             (default-task-schedule-to-close-timeout :none)
@@ -312,6 +313,7 @@
                             (default-task-start-to-close-timeout :none)
                             description)
       (parse-options options)
+    (assert version () "Version is missing")
     (let ((string-name (string external-name))
           (string-version (string version))
           (args-list (parse-lambda-list lambda-list)))
