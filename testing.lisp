@@ -72,7 +72,7 @@
 
 (swf::with-service ()
   (swf::list-workflow-types :registration-status :registered))
-
+;*
 (swf::swf-to-json 'swf::decision (say-hello))
 
 (swf::swf-to-json 'swf::poll-for-decision-task-response *wtask*)
