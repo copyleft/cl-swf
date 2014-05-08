@@ -471,8 +471,9 @@
         (handler-bind ((error
                         (lambda (error)
                           (unless (typep error 'activity-error)
-                            (with-simple-restart (continue "Log and wrap error in activity-error.")
-                              (invoke-debugger error))
+                            (when *enable-debugging*
+                              (with-simple-restart (continue "Log and wrap error in activity-error.")
+                                (invoke-debugger error)))
                             (report-error error)
                             (error 'activity-error
                                    :reason *default-activity-error-reason*

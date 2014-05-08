@@ -274,8 +274,10 @@
 (defun id? (id)
   (equal id (task-id (task))))
 
-(defun event? (event)
-  (eq event (event-task-event-slot *event*)))
+(defun event? (event task)
+  (if task
+      (slot-value task event)
+      (eq event (event-task-event-slot *event*))))
 
 (defun last-event? ()
   (= (event-id *event*) (length (slot-value *wx* 'events))))
@@ -283,24 +285,24 @@
 ;; Tests for event types
 
 
-(defun recorded? () (event? 'recorded-event))
-(defun failed? () (event? 'failed-event))
-(defun signaled? () (event? 'signaled-event))
-(defun started? () (event? 'started-event))
-(defun fired? () (event? 'fired-event))
-(defun canceled? () (event? 'canceled-event))
-(defun cancel-failed? () (event? 'cancel-failed-event))
-(defun completed? () (event? 'completed-event))
-(defun timed-out? () (event? 'timed-out-event))
-(defun terminated-event? () (event? 'terminated-event))
-(defun continued-as-new? () (event? 'continued-as-new-event))
-(defun continue-as-new-failed? () (event? 'continue-as-new-failed-event))
-(defun cancel-requested? () (event? 'cancel-requested-event))
-(defun scheduled? () (event? 'scheduled-event))
-(defun schedule-failed? () (event? 'schedule-failed-event))
-(defun request-cancel-failed? () (event? 'request-cancel-failed-event))
-(defun initiated? () (event? 'initiated-event))
-(defun start-failed? () (event? 'start-failed-event))
+(defun recorded? (&optional task) (event? 'recorded-event task))
+(defun failed? (&optional task) (event? 'failed-event task))
+(defun signaled? (&optional task) (event? 'signaled-event task))
+(defun started? (&optional task) (event? 'started-event task))
+(defun fired? (&optional task) (event? 'fired-event task))
+(defun canceled? (&optional task) (event? 'canceled-event task))
+(defun cancel-failed? (&optional task) (event? 'cancel-failed-event task))
+(defun completed? (&optional task) (event? 'completed-event task))
+(defun timed-out? (&optional task) (event? 'timed-out-event task))
+(defun terminated-event? (&optional task) (event? 'terminated-event task))
+(defun continued-as-new? (&optional task) (event? 'continued-as-new-event task))
+(defun continue-as-new-failed? (&optional task) (event? 'continue-as-new-failed-event task))
+(defun cancel-requested? (&optional task) (event? 'cancel-requested-event task))
+(defun scheduled? (&optional task) (event? 'scheduled-event task))
+(defun schedule-failed? (&optional task) (event? 'schedule-failed-event task))
+(defun request-cancel-failed? (&optional task) (event? 'request-cancel-failed-event task))
+(defun initiated? (&optional task) (event? 'initiated-event task))
+(defun start-failed? (&optional task) (event? 'start-failed-event task))
 
 
 ;; Tests for task types
