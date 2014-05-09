@@ -200,6 +200,10 @@
   ;; TODO: works only during completed event
   (event-details *event*))
 
+(defun activity-control ()
+    ;; TODO: works only during completed event
+  (slot-value (slot-value (task) 'scheduled-event) 'control))
+
 (defun reschedule-activity ()
   ;; TODO: works only during completed event
   (with-slots (activity-id activity-type control heartbeat-timeout input

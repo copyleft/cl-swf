@@ -17,11 +17,6 @@
       (deserialize-slot :workflow-execution (aget (car executions) :execution)))))
 
 
-(find-workflow-execution "44b-sending")
-(find-workflow-execution "43q-sending")
-
-
-
 ;;; Common worker ----------------------------------------------------------------------------------
 
 
@@ -46,15 +41,16 @@
 (defun set-worker-thread-status (type format-control &rest args)
   (log-trace "~?" format-control args)
   (setf (sb-thread:thread-name sb-thread:*current-thread*)
-        (format nil "~A-WORKER: ~?" type format-control args)))
+        (format nil "~A(~A): ~?" type (worker-task-list *worker*) format-control args)))
 
 
-(defun worker-start (worker type)
-  (with-log-context type
-    (loop for error = (worker-handle-next-task worker type)
-          do (when error
-               (set-worker-thread-status type "Pause due to error")
-               (sleep 15)))))
+(defun worker-start (*worker* type)
+  (let ((swf::*service* (worker-service *worker*)))
+    (with-log-context type
+      (loop for error = (worker-handle-next-task type)
+            do (when error
+                 (set-worker-thread-status type "Pause due to error")
+                 (sleep 15))))))
 
 
 (defun worker-start-thread (worker type)
@@ -64,25 +60,23 @@
                          :arguments (list worker type)))
 
 
-(defun worker-handle-next-task (worker type)
-  (let ((*worker* worker)
-        (swf::*service* (worker-service worker)))
-    (handler-bind ((error
-                    (lambda (error)
-                      (unless (typep error 'activity-error)
-                        (when *enable-debugging*
-                          (with-simple-restart (continue "Log error and look for next task.")
-                            (invoke-debugger error)))
-                        (report-error error)
-                        (return-from worker-handle-next-task error)))))
-      (let ((task (worker-look-for-task type)))
-        (when task
-          (with-log-context (task-workflow-id task)
-            (with-log-context (let ((ttype (or (aget (%task-payload task) :workflow-type)
-                                               (aget (%task-payload task) :activity-type))))
-                                (format nil "~A/~A" (aget ttype :name) (aget ttype :version)))
-              (worker-handle-task type task)
-              (values nil t))))))))
+(defun worker-handle-next-task (type)
+  (handler-bind ((error
+                  (lambda (error)
+                    (unless (typep error 'activity-error)
+                      (when *enable-debugging*
+                        (with-simple-restart (continue "Log error and look for next task.")
+                          (invoke-debugger error)))
+                      (report-error error)
+                      (return-from worker-handle-next-task error)))))
+    (let ((task (worker-look-for-task type)))
+      (when task
+        (with-log-context (task-workflow-id task)
+          (with-log-context (let ((ttype (or (aget (%task-payload task) :workflow-type)
+                                             (aget (%task-payload task) :activity-type))))
+                              (format nil "~A/~A" (aget ttype :name) (aget ttype :version)))
+            (worker-handle-task type task)
+            (values nil t)))))))
 
 
 (defclass %task ()
@@ -183,6 +177,13 @@
       (let ((task-type (get symbol 'task-type)))
         (when task-type
           (ensure-task-type task-type))))))
+
+
+(defun ensure-task-types (package)
+  (do-symbols (symbol (find-package package))
+    (let ((task-type (get symbol 'task-type)))
+      (when task-type
+        (ensure-task-type task-type)))))
 
 
 (defun find-workflow-type (x)
@@ -319,6 +320,7 @@
           (args-list (parse-lambda-list lambda-list)))
       `(progn
          (defun ,name (,@(or lambda-list (list '&key))
+                       retry
                        activity-id
                        control
                        heartbeat-timeout
@@ -330,7 +332,9 @@
                (schedule-activity-task-decision
                 :activity-id activity-id
                 :activity-type (get ',name 'task-type)
-                :control control
+                :control (if retry
+                             (list* :max-retries retry control)
+                             control)
                 :heartbeat-timeout heartbeat-timeout
                 :input (list ,@args-list)
                 :schedule-to-close-timeout schedule-to-close-timeout
@@ -398,12 +402,23 @@
       (values (serialize-object (slot-value *wx* 'context))
               (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions)))))))
 
-;; TODO abort facility?
+
+(defun process-event ()
+  (when (and (activity?)
+             (failed?)
+             (< (getf (activity-control) :try 0)
+                (getf (activity-control) :max-retries 0)))
+    (reschedule-activity)
+    t))
+
+
 (defun do-with-new-events (function)
   (dolist (*event* (new-events))
     (log-trace "Processing new event: ~S" *event*)
     (log-trace "Task: ~S ~S" (event-task-event-slot *event*) (event-task *event*))
-    (funcall function)
+    (if (process-event)
+        (log-trace "Event processed by framework")
+        (funcall function))
     (log-trace "Context: ~S" (slot-value *wx* 'context))))
 
 
