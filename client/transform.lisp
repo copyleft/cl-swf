@@ -133,16 +133,13 @@
    (when (and (= 1 (length type-def))
               (not (consp data)))
      (setf data (list (cons (caar type-def) data))))
-   (loop for (slot-name nil required) in type-def
-         when required
-         do (assert (assoc slot-name data) () ;; FIXME: doesn't work when slot is NIL
-                    "Required slot ~S missing in object ~S" slot-name data))
    `(:object ,@(loop for (slot-name . value) in data
                      for slot-type = (or (second (assoc slot-name type-def))
                                          (error "SWF type ~S do not have slot ~S." type slot-name))
-                     when (or value (eq 'boolean slot-type))
+                     if (or value (eq 'boolean slot-type))
                      collect (cons (keyword-to-camelcase slot-name)
-                                   (swf-to-json slot-type value))))))
+                                   (swf-to-json slot-type value))
+                     else do (error "Required slot ~S missing in object ~S of type ~S." slot-name data type)))))
 
 (defun transform% (type data direction)
   (let ((type-def (when (symbolp type) (get type 'swf-type))))
