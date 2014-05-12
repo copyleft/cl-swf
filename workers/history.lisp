@@ -298,7 +298,7 @@
 (defun cancel-failed? (&optional task) (event? 'cancel-failed-event task))
 (defun completed? (&optional task) (event? 'completed-event task))
 (defun timed-out? (&optional task) (event? 'timed-out-event task))
-(defun terminated-event? (&optional task) (event? 'terminated-event task))
+(defun terminated? (&optional task) (event? 'terminated-event task))
 (defun continued-as-new? (&optional task) (event? 'continued-as-new-event task))
 (defun continue-as-new-failed? (&optional task) (event? 'continue-as-new-failed-event task))
 (defun cancel-requested? (&optional task) (event? 'cancel-requested-event task))

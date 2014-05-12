@@ -28,7 +28,7 @@
    #:cancel-failed?
    #:completed?
    #:timed-out?
-   #:terminated-event?
+   #:terminated?
    #:continued-as-new?
    #:continue-as-new-failed?
    #:cancel-requested?
