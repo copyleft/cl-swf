@@ -499,6 +499,7 @@
 
 (define-event cancel-timer-failed-event cancel-failed-event
     (cause
+     decision-task-completed-event-id
      timer-id)
   (%update-task 'timer-task timer-id))
 
@@ -531,6 +532,7 @@
      workflow-type)
   (%update-task 'workflow-task nil))
 
+;; TODO :COMPLETE-WORKFLOW-EXECUTION-FAILED
 
 (define-event workflow-execution-completed-event completed-event
     (decision-task-completed-event-id

@@ -139,7 +139,9 @@
                      if (or value (eq 'boolean slot-type))
                      collect (cons (keyword-to-camelcase slot-name)
                                    (swf-to-json slot-type value))
-                     else do (error "Required slot ~S missing in object ~S of type ~S." slot-name data type)))))
+                     ;; TODO: fixme
+                     ;;else do (error "Required slot ~S missing in object ~S of type ~S." slot-name data type)
+                     ))))
 
 (defun transform% (type data direction)
   (let ((type-def (when (symbolp type) (get type 'swf-type))))
