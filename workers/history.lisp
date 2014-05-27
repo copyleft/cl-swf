@@ -3,6 +3,9 @@
 
 (declaim (optimize (speed 0) (space 0) (debug 3)))
 
+(defvar *wx*)
+(defvar *event*)
+
 
 (defclass event ()
   ((id :initarg :id
@@ -80,8 +83,6 @@
 ;; Functions operating on current workflow execution (wx) and event  -------------------------------
 
 
-(defvar *wx*)
-(defvar *event*)
 
 
 (defun new-events ()

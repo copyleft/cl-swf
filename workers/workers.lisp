@@ -403,29 +403,6 @@
               (mapcar #'transform-decision (nreverse (slot-value *wx* 'decisions)))))))
 
 
-(defun process-event ()
-  (when (and (activity?)
-             (failed?)
-             (< (getf (activity-control) :try 0)
-                (getf (activity-control) :max-retries 0)))
-    (reschedule-activity)
-    t))
-
-
-(defun do-with-new-events (function)
-  (dolist (*event* (new-events))
-    (log-trace "Processing new event: ~S" *event*)
-    (log-trace "Task: ~S ~S" (event-task-event-slot *event*) (event-task *event*))
-    (if (process-event)
-        (log-trace "Event processed by framework")
-        (funcall function))
-    (log-trace "Context: ~S" (slot-value *wx* 'context))))
-
-
-(defmacro with-new-events (&body body)
-  `(do-with-new-events (lambda () ,@body)))
-
-
 ;;; Handling activity tasks ------------------------------------------------------------------------
 
 
