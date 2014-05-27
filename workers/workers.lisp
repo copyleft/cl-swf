@@ -243,13 +243,13 @@
                                       (cons var-def nil)))))
       `(progn
          (defun ,name (,@(or lambda-list (list '&key))
-                       control
+                       (control *control*)
                        child-policy
                        execution-start-to-close-timeout
                        tag-list
                        task-list
                        task-start-to-close-timeout
-                       workflow-id)
+                       (workflow-id *task-id*))
            (if (boundp '*wx*)
                (start-child-workflow-execution-decision
                 :control control
@@ -321,8 +321,8 @@
       `(progn
          (defun ,name (,@(or lambda-list (list '&key))
                        retry
-                       activity-id
-                       control
+                       (activity-id *task-id*)
+                       (control *control*)
                        heartbeat-timeout
                        schedule-to-close-timeout
                        schedule-to-start-timeout
@@ -394,7 +394,7 @@
                                      (aget (%task-payload task) :workflow-execution))
                                :run-id))))
       (log-trace "Start with context: ~S" (slot-value *wx* 'context))
-      (let ((input (event-input (slot-value (workflow-task) 'started-event))))
+      (let ((input (event-input (get-event *wx* 1)))) ;; TODO: is workflow execution started event always first?
         (catch 'exit-decider
           (apply decider-function input)))
       (log-trace "Done with context: ~S" (slot-value *wx* 'context))

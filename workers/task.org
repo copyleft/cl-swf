@@ -1,0 +1,108 @@
+
+| D | event                                                | task       |
+|---+------------------------------------------------------+------------|
+| . | activity-task-cancel-requested                       |            |
+| X | activity-task-canceled                               | activity   |
+| X | activity-task-completed                              | activity   |
+| X | activity-task-failed                                 | activity   |
+| . | activity-task-scheduled                              |            |
+| . | activity-task-started                                |            |
+| X | activity-task-timed-out                              | activity   |
+| X | cancel-timer-failed                                  | workflow   |
+| - | cancel-workflow-execution-failed                     |            |
+| X | child-workflow-execution-canceled                    | child      |
+| X | child-workflow-execution-completed                   | child      |
+| X | child-workflow-execution-failed                      | child      |
+| X | child-workflow-execution-started                     | child      |
+| X | child-workflow-execution-terminated                  | child      |
+| X | child-workflow-execution-timed-out                   | child      |
+| - | complete-workflow-execution-failed                   |            |
+| X | continue-as-new-workflow-execution-failed            | workflow   |
+| . | decision-task-completed                              |            |
+| . | decision-task-scheduled                              |            |
+| . | decision-task-started                                |            |
+| X | decision-task-timed-out                              | workflow   |
+| X | external-workflow-execution-cancel-requested         | cancel-ext |
+| X | external-workflow-execution-signaled                 | signal-ext |
+| - | fail-workflow-execution-failed                       |            |
+| . | marker-recorded                                      |            |
+| X | record-marker-failed                                 | workflow   |
+| X | request-cancel-activity-task-failed                  | workflow   |
+| X | request-cancel-external-workflow-execution-failed    | cancel-ext |
+| ? | request-cancel-external-workflow-execution-initiated |            |
+| X | schedule-activity-task-failed                        | workflow   |
+| X | signal-external-workflow-execution-failed            | signal-ext |
+| ? | signal-external-workflow-execution-initiated         |            |
+| X | start-child-workflow-execution-failed                | child      |
+| ? | start-child-workflow-execution-initiated             |            |
+| X | start-timer-failed                                   | workflow   |
+| . | timer-canceled                                       |            |
+| X | timer-fired                                          | timer      |
+| . | timer-started                                        |            |
+| X | workflow-execution-cancel-requested                  | workflow   |
+| . | workflow-execution-canceled                          |            |
+| . | workflow-execution-completed                         |            |
+| . | workflow-execution-continued-as-new                  |            |
+| . | workflow-execution-failed                            |            |
+| X | workflow-execution-signaled                          | workflow   |
+| X | workflow-execution-started                           | workflow   |
+| . | workflow-execution-terminated                        |            |
+| . | workflow-execution-timed-out                         |            |
+
+Legend:
+X = ensures new decision task is scheduled
+. = no
+- = can only happen when a new decision task is already scheduled
+? = unknown, probably no
+
+
+* workflow
+** cancel-timer-failed
+** continue-as-new-workflow-execution-failed
+** decision-task-timed-out
+** record-marker-failed
+** request-cancel-activity-task-failed
+** schedule-activity-task-failed
+** start-timer-failed
+** workflow-execution-cancel-requested
+** workflow-execution-signaled
+** workflow-execution-started
+
+* activity - schedule-activity-task
+** activity-task-canceled
+** activity-task-completed
+** activity-task-failed
+** activity-task-timed-out
+
+* child - start-child-workflow-execution
+** child-workflow-execution-canceled
+** child-workflow-execution-completed
+** child-workflow-execution-failed
+** child-workflow-execution-started
+** child-workflow-execution-terminated
+** child-workflow-execution-timed-out
+** start-child-workflow-execution-failed
+
+* cancel-ext - request-cancel-external-workflow-execution
+** external-workflow-execution-cancel-requested
+** request-cancel-external-workflow-execution-failed
+
+* signal-ext - signal-external-workflow-execution
+** external-workflow-execution-signaled
+** signal-external-workflow-execution-failed
+
+* timer - start-timer
+** timer-fired
+
+
+* Need to know:
+** Markers recorded, name, value
+** cancel requested?
+** which decisions have been made?
+** Next id for timer
+** Next id for activity
+** Next counter for child workflow?
+** info about open tasks?
+
+* allow-cancel feature?
+* workflow-execution-cancel-requested event handler should be executed last?

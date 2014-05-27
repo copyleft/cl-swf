@@ -36,7 +36,11 @@
    #:schedule-failed?
    #:request-cancel-failed?
    #:initiated?
-   #:start-failed?))
+   #:start-failed?
+   ;; new stuff
+   #:on
+   #:task
+   ))
 
 
 (in-package #:swf-workers)
