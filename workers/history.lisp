@@ -180,7 +180,7 @@
 
 (defun task-type-for-init-form (init-form)
   (case (car init-form)
-    (workflow :workflow)
+    ((nil) :workflow)
     (start-timer :timer)
     (otherwise
      (etypecase (find-task-type (car init-form))
@@ -193,29 +193,30 @@
   (destructuring-bind (task name (&rest args) init-form &body body)
       form
     (assert (eq 'task task))
-    (let ((kwname (intern (symbol-name name) :keyword))
+    (let ((kwname (if name
+                      (intern (symbol-name name) :keyword)
+                      :workflow))
           (type (task-type-for-init-form init-form))
           (handlers (mapcar #'parse-handler body)))
       (verify-events name type (apply #'append (mapcar #'first handlers)))
-      (list (unless (eq 'workflow name)
+      (list (when name
               `(,name (&rest args)
-                      (funcall (handler ,kwname 'init args))))
+                      (handler ,kwname 'init args)))
             `(,kwname
-              (lambda ()
-                (destructuring-bind (,@args) input
-                  (case task-event
-                    ,@(unless (eq 'workflow name)
-                              `((init
-                                 (start-task ,kwname
-                                             input
-                                             (lambda () ,init-form)))))
-                    ,@(mapcar #'second handlers)
-                    (otherwise
-                     (default-handler ',type task-event))))))))))
+              (destructuring-bind (,@args) input
+                (case task-event
+                  ,@(when name
+                            `((init
+                               (start-task ,kwname
+                                           input
+                                           (lambda () ,init-form)))))
+                  ,@(mapcar #'second handlers)
+                  (otherwise
+                   (default-handler ,type task-event)))))))))
 
 
 (defmacro define-workflow/2 (name (&rest lambda-list) (&body options) &body tasks)
-  (let* ((workflow-task `(task workflow () (workflow)
+  (let* ((workflow-task `(task nil () nil
                            ,@(loop while (eq 'on (caar tasks))
                                    collect (pop tasks))))
          (tasks (mapcar #'parse-task (cons workflow-task tasks))))
@@ -227,31 +228,9 @@
          (run-task-events #'handler)))))
 
 
+;; Task starting functions
 
-(define-workflow/2 test (&key hei)
-    ((:version :2)
-     (:default-execution-start-to-close-timeout (* 60 5))
-     (:default-task-start-to-close-timeout 60)
-     (:default-child-policy :terminate))
-  (on :started
-      (wait 5 :b 12))
-  (on :start-timer-failed
-      (fail-workflow-execution-decision))
-  (task wait (a &key b)
-      (start-timer a)
-    (on :fired
-        (complete-workflow-execution-decision :result (list a b hei)))))
-
-
-;decider function is called with workflow input
-;returns: task handler function
-;call with task name, task event name, inputs
-
-
-
-;; task starting functions
-
-(defvar *control*)
+(defvar *control* nil)
 (defvar *task-id*)
 
 (defun start-task (name args init-fn)
@@ -260,7 +239,9 @@
           ))
     (funcall init-fn)))
 
-(defgeneric default-handler (task-type event))
+(defgeneric default-handler (task-type event-name)
+  (:method (task-type event-name)
+    (log-error "Unhandled event: ~S ~S ~S" task-type event-name *event*)))
 
 
 (defun start-timer (start-to-fire-timeout)
@@ -315,13 +296,10 @@
                    collect (deserialize-slot key value))))))
 
 
-(defmacro define-event (name short-name slots &body body)
+(defmacro define-event (name slots &body body)
   `(progn
      (defclass ,name (event)
-       ((short-name :initform ',short-name
-                    :reader event-short-name
-                    :allocation :class)
-        ,@(loop for slot-name in slots
+       (,@(loop for slot-name in slots
                 collect `(,slot-name
                           :initarg ,(intern (symbol-name slot-name) :keyword)
                           :initform nil
@@ -331,25 +309,19 @@
                                                     :keyword))))
        (values ',name
                ,(intern (format nil "~A-ATTRIBUTES" name) :keyword)))
-     (defmethod index-event (wx (event ,name))
+     (defmethod index-event (wx (*event* ,name))
        (with-slots (id ,@slots)
-           event
-         (flet ((%new-task (task-type id)
-                  (new-task wx event task-type id ',short-name))
-                (%update-task (task-type id)
-                  (update-task wx event task-type id ',short-name))
-                (%get-event (event-id)
-                  (get-event wx event-id)))
-           (declare (ignorable (function %new-task)
-                               (function %update-task)
-                               (function %get-event)))
-           ,@body)))))
+           *event*
+         ,@body))))
 
 
-(defun trigger (order event-name control event)
-  (when (event-is-new event)
-    (log-trace "Trigger ~S ~S ~S ~S" order event-name control event)
-    (push (list order event-name control event) (slot-value *wx* 'task-events))))
+(defun trigger (order event-name &optional control)
+  (when (event-is-new *event*)
+    (let ((control (if control
+                       (event-control (get-event *wx* control))
+                       '(:name :workflow))))
+      (log-trace "Trigger ~S ~S ~S ~S" order event-name control *event*)
+      (push (list order event-name control *event*) (slot-value *wx* 'task-events)))))
 
 
 (defun run-task-events (handler)
@@ -360,106 +332,78 @@
           control
         (let ((*event* event))
           (log-trace "Task-event ~S ~S ~S ~S" name event-name args event)
-          (funcall (funcall handler name event-name args)))))))
-
-;; ;; Marker events -----------------------------------------------------------------------------------
+          (funcall handler name event-name args))))))
 
 
-;; (defclass marker-task (task)
-;;   ((recorded-event)
-;;    (failed-event)))
+;; Marker events -----------------------------------------------------------------------------------
 
 
-;; (define-event marker-recorded-event recorded-event
-;;     (decision-task-completed-event-id
-;;      details
-;;      marker-name)
-;;   (%new-task 'marker-task marker-name))
+(define-event marker-recorded-event
+    (decision-task-completed-event-id
+     details
+     marker-name)
+  ;; TODO record marker in some list / index
+  )
 
 
-;; (define-event record-marker-failed-event failed-event
-;;     (cause
-;;      decision-task-completed-event-id
-;;      marker-name)
-;;   (%new-task 'marker-task marker-name))
+(define-event record-marker-failed-event
+    (cause
+     decision-task-completed-event-id
+     marker-name)
+  (trigger 0 :record-marker-failed))
 
 
-;; ;; Signal events -----------------------------------------------------------------------------------
+;; Signal events -----------------------------------------------------------------------------------
 
 
-;; (defclass signal-task (task)
-;;   ((signaled-event)))
+(define-event workflow-execution-signaled-event
+    (external-initiated-event-id
+     external-workflow-execution
+     input
+     signal-name)
+  (trigger 0 :signaled))
 
 
-;; (define-event workflow-execution-signaled-event signaled-event
-;;     (external-initiated-event-id
-;;      external-workflow-execution
-;;      input
-;;      signal-name)
-;;   (%new-task 'signal-task signal-name))
+;; Timer events ------------------------------------------------------------------------------------
 
 
-;; ;; Timer events ------------------------------------------------------------------------------------
-
-
-;; (defclass timer-task (task)
-;;   ((started-event)
-;;    (failed-event)
-;;    (fired-event)
-;;    (canceled-event)
-;;    (cancel-failed-event)))
-
-
-(define-event timer-started-event :started
+(define-event timer-started-event
     (control
      decision-task-completed-event-id
      start-to-fire-timeout
      timer-id))
 
 
-;; (define-event start-timer-failed-event failed-event
-;;     (cause
-;;      decision-task-completed-event-id
-;;      timer-id)
-;;   (%new-task 'timer-task timer-id))
+(define-event start-timer-failed-event
+    (cause
+     decision-task-completed-event-id
+     timer-id)
+  (trigger 0 :start-timer-failed))
 
 
-(define-event timer-fired-event :fired
+(define-event timer-fired-event
     (started-event-id
      timer-id)
-  (trigger 0 :fired (event-control (get-event *wx* started-event-id)) event))
+  (trigger 0 :fired started-event-id))
 
 
-;; (define-event timer-canceled-event canceled-event
-;;     (decision-task-completed-event-id
-;;      started-event-id
-;;      timer-id)
-;;   (%update-task 'timer-task timer-id))
+(define-event timer-canceled-event
+    (decision-task-completed-event-id
+     started-event-id
+     timer-id))
 
 
-;; (define-event cancel-timer-failed-event cancel-failed-event
-;;     (cause
-;;      decision-task-completed-event-id
-;;      timer-id)
-;;   (%update-task 'timer-task timer-id))
+(define-event cancel-timer-failed-event
+    (cause
+     decision-task-completed-event-id
+     timer-id)
+  (trigger 0 :cancel-timer-failed))
 
 
-;; ;; Workflow events -------------------------------------------------------------------------
+;; Workflow events -------------------------------------------------------------------------
 
 
-;; (defclass workflow-task (task)
-;;   ((started-event)
-;;    (completed-event)
-;;    (failed-event)
-;;    (timed-out-event)
-;;    (canceled-event)
-;;    (terminated-event)
-;;    (continued-as-new-event)
-;;    (continue-as-new-failed-event)
-;;    (cancel-requested-event)))
-
-
-(define-event workflow-execution-started-event :started
+(define-event workflow-execution-started-event
     (child-policy
      continued-execution-run-id
      execution-start-to-close-timeout
@@ -470,71 +414,70 @@
      task-list
      task-start-to-close-timeout
      workflow-type)
-  ;;(setf (slot-value *wx* 'started-event) event)
-  (trigger 0 :started '(:name :workflow) event))
-
-;; ;; TODO :COMPLETE-WORKFLOW-EXECUTION-FAILED
-
-;; (define-event workflow-execution-completed-event completed-event
-;;     (decision-task-completed-event-id
-;;      result)
-;;   (%update-task 'workflow-task nil))
+  (trigger 0 :started))
 
 
-;; (define-event workflow-execution-failed-event failed-event
-;;     (decision-task-completed-event-id
-;;      details
-;;      reason)
-;;   (%update-task 'workflow-task nil))
+(define-event complete-workflow-execution-failed-event
+    (cause
+     decision-task-completed-event-id)
+  ;; TODO: trigger event for this?
+  )
 
 
-;; (define-event workflow-execution-timed-out-event timed-out-event
-;;     (child-policy
-;;      timeout-type)
-;;   (%update-task 'workflow-task nil))
+(define-event workflow-execution-completed-event
+    (decision-task-completed-event-id
+     result))
 
 
-;; (define-event workflow-execution-canceled-event canceled-event
-;;     (decision-task-completed-event-id
-;;      details)
-;;   (%update-task 'workflow-task nil))
+(define-event workflow-execution-failed-event
+    (decision-task-completed-event-id
+     details
+     reason))
 
 
-;; (define-event workflow-execution-terminated-event terminated-event
-;;     (cause
-;;      child-policy
-;;      details
-;;      reason)
-;;   (%update-task 'workflow-task nil))
+(define-event workflow-execution-timed-out-event
+    (child-policy
+     timeout-type))
 
 
-;; (define-event workflow-execution-continued-as-new-event continued-as-new-event
-;;     (child-policy
-;;      decision-task-completed-event-id
-;;      execution-start-to-close-timeout
-;;      input
-;;      new-execution-run-id
-;;      tag-list
-;;      task-list
-;;      task-start-to-close-timeout
-;;      workflow-type)
-;;   (%update-task 'workflow-task nil))
+(define-event workflow-execution-canceled-event
+    (decision-task-completed-event-id
+     details))
 
 
-;; (define-event continue-as-new-workflow-execution-failed-event continue-as-new-failed-event
-;;     (cause
-;;      decision-task-completed-event-id)
-;;   (%update-task 'workflow-task nil))
+(define-event workflow-execution-terminated-event
+    (cause
+     child-policy
+     details
+     reason))
 
 
-;; (define-event workflow-execution-cancel-requested-event cancel-requested-event
-;;     (cause
-;;      external-initiated-event-id
-;;      external-workflow-execution)
-;;   (%update-task 'workflow-task nil))
+(define-event workflow-execution-continued-as-new-event
+    (child-policy
+     decision-task-completed-event-id
+     execution-start-to-close-timeout
+     input
+     new-execution-run-id
+     tag-list
+     task-list
+     task-start-to-close-timeout
+     workflow-type))
 
 
-;; ;; Decision events -------------------------------------------------------------------------
+(define-event continue-as-new-workflow-execution-failed-event
+    (cause
+     decision-task-completed-event-id)
+  (trigger 0 :continue-as-new-failed))
+
+
+(define-event workflow-execution-cancel-requested-event
+    (cause
+     external-initiated-event-id
+     external-workflow-execution)
+  (trigger 0 :cancel-requested))
+
+
+;; Decision events -------------------------------------------------------------------------
 
 
 (defclass decision-task (task)
@@ -544,54 +487,35 @@
    (timed-out-event)))
 
 
-(define-event decision-task-scheduled-event scheduled-event
+(define-event decision-task-scheduled-event
     (start-to-close-timeout
-     task-list)
-  ;(%new-task 'decision-task id)
-  )
+     task-list))
 
 
-(define-event decision-task-started-event started-event
+(define-event decision-task-started-event
     (identity
-     scheduled-event-id)
-  ;(%update-task 'decision-task scheduled-event-id)
-  )
+     scheduled-event-id))
 
 
-(define-event decision-task-completed-event completed-event
+(define-event decision-task-completed-event
     (execution-context
      scheduled-event-id
      started-event-id)
   (when execution-context
-    (setf (slot-value wx 'context) execution-context))
-  ;(%update-task 'decision-task scheduled-event-id)
-  )
+    (setf (slot-value wx 'context) execution-context)))
 
 
-(define-event decision-task-timed-out-event timed-out-event
+(define-event decision-task-timed-out-event
     (scheduled-event-id
      started-event-id
      timeout-type)
-  ;(%update-task 'decision-task scheduled-event-id)
-  )
+  (trigger 0 :decision-task-timed-out))
 
 
-;; ;; Activity events -------------------------------------------------------------------------
+;; Activity events -------------------------------------------------------------------------
 
 
-;; (defclass activity-task (task)
-;;   ((scheduled-event)
-;;    (schedule-failed-event)
-;;    (started-event)
-;;    (completed-event)
-;;    (failed-event)
-;;    (timed-out-event)
-;;    (canceled-event)
-;;    (cancel-requested-event)
-;;    (request-cancel-failed-event)))
-
-
-(define-event activity-task-scheduled-event scheduled-event
+(define-event activity-task-scheduled-event
     (activity-id
      activity-type
      control
@@ -601,93 +525,69 @@
      schedule-to-close-timeout
      schedule-to-start-timeout
      start-to-close-timeout
-     task-list)
-  ;;(%new-task 'activity-task activity-id)
-  )
+     task-list))
 
 
-(define-event schedule-activity-task-failed-event schedule-failed-event
+(define-event schedule-activity-task-failed-event
     (activity-id
      activity-type
      cause
      decision-task-completed-event-id)
-  ;;(%new-task 'activity-task activity-id)
-  )
+  (trigger 0 :schedule-activity-task-failed))
 
 
-(define-event activity-task-started-event started-event
+(define-event activity-task-started-event
     (identity
-     scheduled-event-id)
-  ;(trigger 0 :started (event-control (get-event *wx* scheduled-event-id)) event)
-  )
+     scheduled-event-id))
 
 
-(define-event activity-task-completed-event completed-event
+(define-event activity-task-completed-event
     (result
      scheduled-event-id
      started-event-id)
-  (trigger 0 :completed (event-control (get-event *wx* scheduled-event-id)) event)
-  ;(%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)))
-  )
+  (trigger 0 :completed scheduled-event-id))
 
 
-(define-event activity-task-failed-event failed-event
+(define-event activity-task-failed-event
     (details
      reason
      scheduled-event-id
      started-event-id)
-  ;(%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)))
-  )
+  (trigger 0 :failed scheduled-event-id))
 
 
-(define-event activity-task-timed-out-event timed-out-event
+(define-event activity-task-timed-out-event
     (details
      scheduled-event-id
      started-event-id
      timeout-type)
-  ;(%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)))
-  )
+  (trigger 0 :timed-out scheduled-event-id))
 
 
-(define-event activity-task-canceled-event canceled-event
+(define-event activity-task-canceled-event
     (details
      latest-cancel-requested-event-id
      scheduled-event-id
      started-event-id)
-  ;(%update-task 'activity-task (event-activity-id (%get-event scheduled-event-id)))
-  )
+  (trigger 0 :canceled scheduled-event-id))
 
 
-(define-event activity-task-cancel-requested-event cancel-requested-event
+(define-event activity-task-cancel-requested-event
     (activity-id
-     decision-task-completed-event-id)
-  ;(%update-task 'activity-task activity-id)
-  )
+     decision-task-completed-event-id))
 
 
-(define-event request-cancel-activity-task-failed-event request-cancel-failed-event
+(define-event request-cancel-activity-task-failed-event
     (activity-id
      cause
      decision-task-completed-event-id)
-  ;(%new-task 'activity-task activity-id)
-  )
+  (trigger 0 :request-cancel-activity-task-failed))
 
 
-;; ;; Child workflow -------------------------------------------------------------------------
+;; Child workflow -------------------------------------------------------------------------
 
 
-;; (defclass child-workflow-task (task)
-;;   ((initiated-event)
-;;    (start-failed-event)
-;;    (started-event)
-;;    (completed-event)
-;;    (failed-event)
-;;    (timed-out-event)
-;;    (canceled-event)
-;;    (terminated-event)))
-
-
-(define-event start-child-workflow-execution-initiated-event initiated-event
+(define-event start-child-workflow-execution-initiated-event
     (child-policy
      control
      decision-task-completed-event-id
@@ -697,144 +597,120 @@
      task-list
      task-start-to-close-timeout
      workflow-id
-     workflow-type)
-  ;(%new-task 'child-workflow-task workflow-id)
-  )
+     workflow-type))
 
 
-(define-event start-child-workflow-execution-failed-event start-failed-event
+(define-event start-child-workflow-execution-failed-event
     (cause
      control
      decision-task-completed-event-id
      initiated-event-id
      workflow-id
      workflow-type)
-  ;(%new-task 'child-workflow-task workflow-id)
-  )
+  (trigger 0 :start-failed initiated-event-id))
 
 
-(define-event child-workflow-execution-started-event started-event
+(define-event child-workflow-execution-started-event
     (initiated-event-id
      workflow-execution
      workflow-type)
-  ;(%update-task 'child-workflow-task (aget workflow-execution :workflow-id))
-  )
+  (trigger 0 :started initiated-event-id))
 
 
-(define-event child-workflow-execution-completed-event completed-event
+(define-event child-workflow-execution-completed-event
     (initiated-event-id
      result
      started-event-id
      workflow-execution
      workflow-type)
-  (trigger 0 :completed (event-control (get-event *wx* initiated-event-id)) event)
-  ;(%update-task 'child-workflow-task (aget workflow-execution :workflow-id))
-  )
+  (trigger 0 :completed initiated-event-id))
 
 
-(define-event child-workflow-execution-failed-event failed-event
+(define-event child-workflow-execution-failed-event
     (details
      initiated-event-id
      reason
      started-event-id
      workflow-execution
      workflow-type)
-  ;(%update-task 'child-workflow-task (aget workflow-execution :workflow-id))
-  )
+  (trigger 0 :failed initiated-event-id))
 
 
-(define-event child-workflow-execution-timed-out-event timed-out-event
+(define-event child-workflow-execution-timed-out-event
     (initiated-event-id
      started-event-id
      timeout-type
      workflow-execution
      workflow-type)
-  ;(%update-task 'child-workflow-task (aget workflow-execution :workflow-id))
-  )
+  (trigger 0 :timed-out initiated-event-id))
 
 
-(define-event child-workflow-execution-canceled-event canceled-event
+(define-event child-workflow-execution-canceled-event
     (details
      initiated-event-id
      started-event-id
      workflow-execution
      workflow-type)
-  ;(%update-task 'child-workflow-task (aget workflow-execution :workflow-id))
-  )
+  (trigger 0 :canceled initiated-event-id))
 
 
-(define-event child-workflow-execution-terminated-event terminated-event
+(define-event child-workflow-execution-terminated-event
     (initiated-event-id
      started-event-id
      workflow-execution
      workflow-type)
-  ;(%update-task 'child-workflow-task (aget workflow-execution :workflow-id))
-  )
+  (trigger 0 :terminated initiated-event-id))
 
 
-;; ;; Signal external workflow ----------------------------------------------------------------------
+;; Signal external workflow ----------------------------------------------------------------------
 
 
-;; (defclass signal-external-task (task)
-;;   ((initiated-event)
-;;    (signaled-event)
-;;    (failed-event)))
+(define-event signal-external-workflow-execution-initiated-event
+    (control
+     decision-task-completed-event-id
+     input
+     run-id
+     signal-name
+     workflow-id))
 
 
-;; (define-event signal-external-workflow-execution-initiated-event initiated-event
-;;     (control
-;;      decision-task-completed-event-id
-;;      input
-;;      run-id
-;;      signal-name
-;;      workflow-id)
-;;   (%new-task 'signal-external-task id))
+(define-event external-workflow-execution-signaled-event
+    (initiated-event-id
+     workflow-execution)
+  (trigger 0 :signaled initiated-event-id))
 
 
-;; (define-event external-workflow-execution-signaled-event signaled-event
-;;     (initiated-event-id
-;;      workflow-execution)
-;;   (%update-task 'signal-external-task initiated-event-id))
+(define-event signal-external-workflow-execution-failed-event
+    (cause
+     control
+     decision-task-completed-event-id
+     initiated-event-id
+     run-id
+     workflow-id)
+  (trigger 0 :failed initiated-event-id))
 
 
-;; (define-event signal-external-workflow-execution-failed-event failed-event
-;;     (cause
-;;      control
-;;      decision-task-completed-event-id
-;;      initiated-event-id
-;;      run-id
-;;      workflow-id)
-;;   (%update-task 'signal-external-task initiated-event-id))
+;; Cancel external workflow ----------------------------------------------------------------------
 
 
-;; ;; Cancel external workflow ----------------------------------------------------------------------
+(define-event request-cancel-external-workflow-execution-initiated-event
+    (control
+     decision-task-completed-event-id
+     run-id
+     workflow-id))
 
 
-;; (defclass cancel-external-task (task)
-;;   ((initiated-event)
-;;    (cancel-requested-event)
-;;    (failed-event)))
+(define-event external-workflow-execution-cancel-requested-event
+    (initiated-event-id
+     workflow-execution)
+  (trigger 0 :cancel-requested initiated-event-id))
 
 
-;; (define-event request-cancel-external-workflow-execution-initiated-event initiated-event
-;;     (control
-;;      decision-task-completed-event-id
-;;      run-id
-;;      workflow-id)
-;;   (%new-task 'cancel-external-task id))
-
-
-;; (define-event external-workflow-execution-cancel-requested-event cancel-requested-event
-;;     (initiated-event-id
-;;      workflow-execution)
-;;   (%update-task 'cancel-external-task initiated-event-id))
-
-
-;; (define-event request-cancel-external-workflow-execution-failed-event failed-event
-;;     (cause
-;;      control
-;;      decision-task-completed-event-id
-;;      initiated-event-id
-;;      run-id
-;;      workflow-id)
-;;   (%update-task 'cancel-external-task 'initiated-event-id))
+(define-event request-cancel-external-workflow-execution-failed-event
+    (cause
+     control
+     decision-task-completed-event-id
+     initiated-event-id
+     run-id
+     workflow-id)
+  (trigger 0 :failed initiated-event-id))
