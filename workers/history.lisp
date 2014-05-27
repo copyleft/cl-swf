@@ -30,6 +30,8 @@
    (new-events :initarg :new-events)
    (previous-started-event-id :initarg :previous-started-event-id)
    (started-event-id :initarg :started-event-id)
+   (canceled-requested-event-ids :initform nil)
+   (markers :initform nil)
    (task-events :initform nil)))
 
 
@@ -150,21 +152,35 @@
 
 (defun verify-events (name type events)
   (let* ((defined-events (ecase type
-                           (:workflow '((:started) (:signaled :start-timer-failed)))
+                           (:workflow '((:started)
+                                        (:cancel-timer-failed
+                                         :continue-as-new-failed
+                                         :decision-task-timed-out
+                                         :record-marker-failed
+                                         :request-cancel-activity-task-failed
+                                         :schedule-activity-task-failed
+                                         :start-timer-failed
+                                         :cancel-requested
+                                         :signaled)))
                            (:timer '((:fired)))
-                           (:activity '(()
-                                        (:canceled
+                           (:activity '((:canceled
                                          :completed
                                          :failed
-                                         :timed-out)))
-                           (:child-workflow '(()
-                                              (:canceled
+                                         :timed-out)
+                                        ()))
+                           (:child-workflow '((:canceled
                                                :completed
                                                :failed
-                                               :started
                                                :terminated
-                                               :timed-out
-                                               :start-failed)))))
+                                               :timed-out)
+                                              (:started
+                                               :start-failed)))
+                           (:signal-ext '((:signaled
+                                           :failed)
+                                          ()))
+                           (:cancel-ext '((:cancel-requested
+                                           :failed)
+                                          ()))))
          (missing (set-difference (first defined-events) events))
          (undefined (set-difference (set-difference events (first defined-events))
                                     (second defined-events))))
@@ -182,6 +198,8 @@
   (case (car init-form)
     ((nil) :workflow)
     (start-timer :timer)
+    (signal-external-workflow-execution :signal-ext)
+    (request-cancel-external-workflow-execution :cancel-ext)
     (otherwise
      (etypecase (find-task-type (car init-form))
        (workflow-type :child-workflow)
@@ -248,6 +266,29 @@
   (start-timer-decision :start-to-fire-timeout start-to-fire-timeout
                         :control *control*
                         :timer-id *task-id*))
+
+
+(defun request-cancel-external-workflow-execution (&key run-id workflow-id)
+  (request-cancel-external-workflow-execution-decision :control *control*
+                                                       :run-id run-id
+                                                       :workflow-id workflow-id))
+
+
+(defun signal-external-workflow-execution (signal-name &key input workflow-id run-id)
+  (signal-external-workflow-execution-decision :control *control*
+                                               :run-id run-id
+                                               :workflow-id workflow-id
+                                               :signal-name signal-name
+                                               :input input))
+
+
+(defun record-marker (name &rest details)
+  (push (list name details) (slot-value *wx* 'markers))
+  (record-marker-decision :marker-name name :details details))
+
+
+(defun get-marker (name)
+  (find name (slot-value *wx* 'markers) :key #'car))
 
 
 ;; Tasks -------------------------------------------------------------------------------------------
@@ -342,8 +383,7 @@
     (decision-task-completed-event-id
      details
      marker-name)
-  ;; TODO record marker in some list / index
-  )
+  (push (list marker-name details id) (slot-value *wx* 'markers)))
 
 
 (define-event record-marker-failed-event
@@ -474,6 +514,7 @@
     (cause
      external-initiated-event-id
      external-workflow-execution)
+  (push id (slot-value *wx* 'canceled-requested-event-ids))
   (trigger 0 :cancel-requested))
 
 

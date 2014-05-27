@@ -66,7 +66,9 @@
   (task add-it (a b)
       (adding-child :a a :b b)
     (on :completed
-        (wait 5 :b (swfw::activity-result))))
+        (wait 5 :b (swfw::activity-result)))
+    (on (:timed-out :canceled :terminated :failed)
+        (swfw::fail-workflow-execution-decision :reason :spite)))
   (task wait (a &key b)
       (start-timer a)
     (on :fired
@@ -82,7 +84,9 @@
   (task add-it (a b)
       (add :a a :b b)
     (on :completed
-        (swfw::complete-workflow-execution-decision :result (swfw::activity-result)))))
+        (swfw::complete-workflow-execution-decision :result (swfw::activity-result)))
+    (on (:timed-out :canceled :failed)
+        (swfw::fail-workflow-execution-decision :reason :spite))))
 
 
 ;; (swf::with-service ()  (test :workflow-id :test6 :hei "du"))
