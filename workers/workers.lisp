@@ -201,7 +201,7 @@
 ;;; Defining workflows ----------------------------------------------------------------------------
 
 
-(defun parse-lambda-list (lambda-list)
+(defun parse-workflow-lambda-list (lambda-list)
   (assert (or (null lambda-list)
               (eq '&key (car lambda-list)))
           () "Lambda list must start with &key")
@@ -219,7 +219,7 @@
                     (car value))))
 
 
-(defmacro define-workflow (name
+(defmacro %define-workflow (name
                            (&rest lambda-list)
                               (&body options)
                            &body body)
@@ -236,7 +236,7 @@
     (assert version () "Version is missing")
     (let* ((string-name (string external-name))
            (string-version (string version))
-           (args-list (parse-lambda-list lambda-list))
+           (args-list (parse-workflow-lambda-list lambda-list))
            (context (loop for var-def in context
                           collect (if (consp var-def)
                                       (cons (car var-def) (cadr var-def))
@@ -317,7 +317,7 @@
     (assert version () "Version is missing")
     (let ((string-name (string external-name))
           (string-version (string version))
-          (args-list (parse-lambda-list lambda-list)))
+          (args-list (parse-workflow-lambda-list lambda-list)))
       `(progn
          (defun ,name (,@(or lambda-list (list '&key))
                        retry

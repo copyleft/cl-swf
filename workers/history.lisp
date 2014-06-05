@@ -3,8 +3,14 @@
 
 (declaim (optimize (speed 0) (space 0) (debug 3)))
 
+
+(define-condition simple-style-warning (simple-condition style-warning) ())
+(defun style-warn (datum &rest args)
+  (warn 'simple-style-warning :format-control datum :format-arguments args))
+
+
 (defvar *wx*)
-(defvar *event*)
+(defvar *event* nil)
 
 
 (defclass event ()
@@ -56,6 +62,8 @@
                               :run-id run-id)))
     (loop for event across events do
           (index-event *wx* event))
+    (trigger -1000 :decision-task-started)
+    (trigger 1000 :decision-task-completed)
     *wx*))
 
 
@@ -134,6 +142,36 @@
 (defun activity-result ()
   (event-result *event*))
 
+(defun child-workflow-result ()
+  (event-result *event*))
+
+(defun workflow-execution-started-event ()
+  ;; TODO is this event always first?
+  (get-event *wx* 1))
+
+
+(defun complete-workflow (&optional result)
+  (complete-workflow-execution-decision :result result))
+
+
+(defun continue-as-new ()
+  (with-slots (child-policy
+               execution-start-to-close-timeout
+               input
+               tag-list
+               task-list
+               task-start-to-close-timeout
+               workflow-type)
+      (workflow-execution-started-event)
+    (continue-as-new-workflow-execution-decision
+     :child-policy child-policy
+     :execution-start-to-close-timeout execution-start-to-close-timeout
+     :input input
+     :tag-list tag-list
+     :task-list task-list
+     :task-start-to-close-timeout task-start-to-close-timeout
+     :workflow-type-version (getf (task-type-options workflow-type) :version))))
+
 
 ;; defining workflow
 
@@ -162,13 +200,14 @@
                                          :schedule-activity-task-failed
                                          :start-timer-failed
                                          :cancel-requested
-                                         :signaled)))
+                                         :signaled
+                                         :decision-task-completed)))
                            (:timer '((:fired)))
-                           (:activity '((:canceled
+                           (:activity '((:completed)
+                                        (:canceled
                                          :completed
                                          :failed
-                                         :timed-out)
-                                        ()))
+                                         :timed-out)))
                            (:child-workflow '((:canceled
                                                :completed
                                                :failed
@@ -186,9 +225,9 @@
          (undefined (set-difference (set-difference events (first defined-events))
                                     (second defined-events))))
     (when missing
-      (warn "Unhandled events in task ~S: ~S" name missing))
+      (style-warn "Unhandled events in task ~S: ~S" name missing))
     (when undefined
-      (warn "Undefined events in task ~S: ~S" name undefined))))
+      (style-warn "Undefined events in task ~S: ~S" name undefined))))
 
 
 (defmacro task (name (&rest args) init-form &body body)
@@ -199,52 +238,149 @@
   (case (car init-form)
     ((nil) :workflow)
     (start-timer :timer)
+    (start-child-workflow :child-workflow)
+    (schedule-activity :activity)
     (signal-external-workflow-execution :signal-ext)
     (request-cancel-external-workflow-execution :cancel-ext)
     (otherwise
-     (etypecase (find-task-type (car init-form))
-       (workflow-type :child-workflow)
-       (activity-type :activity)
-       (null (error "Invalid init-form for task: ~S" init-form))))))
+     (error "Invalid init-form for task: ~S" init-form))))
 
 
+(defun normalize-key-parameter (param)
+  (let ((var param)
+        keyword-name
+        init-form
+        supplied-p-parameter)
+    (when (consp var)
+      (setf init-form (second var))
+      (setf supplied-p-parameter (third var))
+      (setf var (car var)))
+    (when (consp var)
+      (setf keyword-name (cadr var))
+      (setf var (car var)))
+    (unless keyword-name
+      (setf keyword-name (intern (string var) :keyword)))
+    (unless supplied-p-parameter
+      (setf supplied-p-parameter (gensym (format nil "~A-P-" var))))
+    `((,var ,keyword-name) ,init-form ,supplied-p-parameter)))
+
+
+(defun normalize-optional-parameter (param)
+  (let ((var param)
+        init-form
+        supplied-p-parameter)
+    (when (consp var)
+      (setf init-form (second var))
+      (setf supplied-p-parameter (third var))
+      (setf var (car var)))
+    (unless supplied-p-parameter
+      (setf supplied-p-parameter (gensym (format nil "~A-P-" var))))
+    `(,var ,init-form ,supplied-p-parameter)))
+
+
+(defun normalize-aux-parameter (param)
+  (let ((var param)
+        init-form)
+    (when (consp var)
+      (setf init-form (second var))
+      (setf var (car var)))
+    `(,var ,init-form)))
+
+;(normalize-key-parameter 'key)
+;(normalize-key-parameter '(key 34))
+;(normalize-key-parameter '((key :knob) 323))
+;(normalize-optional-parameter 'b)
+;(normalize-optional-parameter '(b 3))
+;(normalize-aux-parameter 'a)
+;(normalize-aux-parameter '(a 99))
+
+(defun parse-lambda-list (lambda-list)
+  (let* ((optional-start (member '&optional lambda-list))
+         (rest-start (member '&rest lambda-list))
+         (key-start (member '&key lambda-list))
+         (allow-other-keys (member '&allow-other-keys lambda-list))
+         (aux-start (member '&aux lambda-list))
+         (vars (ldiff lambda-list (or optional-start rest-start key-start allow-other-keys aux-start)))
+         (optionals (mapcar #'normalize-optional-parameter
+                            (ldiff (cdr optional-start) (or rest-start key-start allow-other-keys aux-start))))
+         (rest (ldiff rest-start (or key-start allow-other-keys aux-start)))
+         (rest-var (second rest))
+         (keys (mapcar #'normalize-key-parameter
+                       (ldiff (cdr key-start) (or allow-other-keys aux-start))))
+         (aux (mapcar #'normalize-aux-parameter (cdr aux-start)))
+         (all-vars (append vars
+                           (mapcar #'car optionals)
+                           (cdr rest)
+                           (mapcar #'caar keys)
+                           (mapcar #'car aux)))
+         (normalized-lambda-list `(,@vars
+                                   ,@(when optionals `(&optional ,@optionals))
+                                   ,@rest
+                                   ,@(when keys `(&key ,@keys))
+                                   ,@allow-other-keys
+                                   ,@(when aux `(&aux ,@aux))))
+         (args-list-form `(loop
+                           ,@(loop :for var :in vars append `(:collect ,var))
+                           ,@(loop :for (var nil supplied-p) :in optionals
+                                   :append `(when ,supplied-p :collect ,var))
+                           ,@(when rest `(:append ,rest-var))
+                           ,@(unless rest
+                                     (loop :for ((var key) nil supplied-p) :in keys
+                                           :append `(when ,supplied-p :collect ,key :and :collect ,var)))
+                           :while nil)))
+    (values normalized-lambda-list
+            all-vars
+            args-list-form
+            vars
+            optionals
+            rest
+            keys
+            allow-other-keys
+            aux)))
+
+
+;(parse-lambda-list '(a q &optional (b 3) &rest x &key c (d a) &aux tr))
+;(parse-lambda-list '(a q &optional (b 3) &key c (d a) &aux tr))
 (defun parse-task (form)
   (destructuring-bind (task name (&rest args) init-form &body body)
       form
     (assert (eq 'task task))
-    (let ((kwname (if name
-                      (intern (symbol-name name) :keyword)
-                      :workflow))
-          (type (task-type-for-init-form init-form))
-          (handlers (mapcar #'parse-handler body)))
-      (verify-events name type (apply #'append (mapcar #'first handlers)))
-      (list (when name
-              `(,name (&rest args)
-                      (handler ,kwname 'init args)))
-            `(,kwname
-              (destructuring-bind (,@args) input
-                (case task-event
-                  ,@(when name
-                            `((init
-                               (start-task ,kwname
-                                           input
-                                           (lambda () ,init-form)))))
-                  ,@(mapcar #'second handlers)
-                  (otherwise
-                   (default-handler ,type task-event)))))))))
+    (multiple-value-bind (normalized-lambda-list all-vars args-list-form)
+        (parse-lambda-list args)
+      (let ((kwname (if name
+                        (intern (symbol-name name) :keyword)
+                        :workflow))
+            (type (task-type-for-init-form init-form))
+            (handlers (mapcar #'parse-handler body)))
+        (verify-events name type (apply #'append (mapcar #'first handlers)))
+        (list (when name
+                `(,name (,@normalized-lambda-list)
+                        (declare (ignorable ,@all-vars))
+                        (start-task ,kwname
+                                    ,args-list-form
+                                    (lambda () ,init-form))))
+              `(,kwname
+                (destructuring-bind (,@args) input
+                  (declare (ignorable ,@all-vars))
+                  (case task-event
+                    ,@(mapcar #'second handlers)
+                    (otherwise
+                     (default-handler ,type task-event))))))))))
 
 
-(defmacro define-workflow/2 (name (&rest lambda-list) (&body options) &body tasks)
+(defmacro define-workflow (name (&rest lambda-list) (&body options) &body tasks)
   (let* ((workflow-task `(task nil () nil
                            ,@(loop while (eq 'on (caar tasks))
                                    collect (pop tasks))))
          (tasks (mapcar #'parse-task (cons workflow-task tasks))))
-    `(define-workflow ,name ,lambda-list ,options
-       (labels (,@(remove nil (mapcar #'first tasks))
-                (handler (task-name task-event input)
-                  (ecase task-name
-                    ,@(mapcar #'second tasks))))
-         (run-task-events #'handler)))))
+    `(%define-workflow ,name ,lambda-list ,options
+       (let (handler)
+         (flet (,@(remove nil (mapcar #'first tasks)))
+           (labels ((handler (task-name task-event input)
+                      (ecase task-name
+                        ,@(mapcar #'second tasks))))
+             (setf handler #'handler)
+             (run-task-events #'handler)))))))
 
 
 ;; Task starting functions
@@ -267,6 +403,14 @@
   (start-timer-decision :start-to-fire-timeout start-to-fire-timeout
                         :control *control*
                         :timer-id *task-id*))
+
+
+(defun start-child-workflow (dummy)
+  (declare (ignore dummy)))
+
+
+(defun schedule-activity (dummy)
+  (declare (ignore dummy)))
 
 
 (defun request-cancel-external-workflow-execution (&key run-id workflow-id)
@@ -358,7 +502,8 @@
 
 
 (defun trigger (order event-name &optional control)
-  (when (event-is-new *event*)
+  (when (or (null *event*)
+            (event-is-new *event*))
     (let ((control (if control
                        (event-control (get-event *wx* control))
                        '(:name :workflow))))

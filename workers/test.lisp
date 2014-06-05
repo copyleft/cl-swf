@@ -50,21 +50,22 @@
 
 ;;;
 
-(swfw::define-activity add (&key a b)
+(define-activity add (&key a b)
     ((:version :1))
   (+ a b))
 
-(swfw::define-workflow/2 test (&key hei)
+
+(define-workflow test (&key hei)
     ((:version :2)
      (:default-execution-start-to-close-timeout (* 60 5))
      (:default-task-start-to-close-timeout 60)
      (:default-child-policy :terminate))
   (on :started
-      (add-it 7 4))
+      (adding-child 7 4))
   (on :start-timer-failed
       (swfw::fail-workflow-execution-decision))
-  (task add-it (a b)
-      (adding-child :a a :b b)
+  (task addding-child (a b)
+      (start-child-workflow (adding-child :a a :b b))
     (on :completed
         (wait 5 :b (swfw::activity-result)))
     (on (:timed-out :canceled :terminated :failed)
@@ -74,7 +75,8 @@
     (on :fired
         (swfw::complete-workflow-execution-decision :result (list a b hei)))))
 
-(swfw::define-workflow/2 adding-child (&key a b)
+
+(define-workflow adding-child (&key a b)
     ((:version :2)
      (:default-execution-start-to-close-timeout (* 60 5))
      (:default-task-start-to-close-timeout 60)
@@ -82,11 +84,16 @@
   (on :started
       (add-it a b))
   (task add-it (a b)
-      (add :a a :b b)
+      (schedule-activity (add :a a :b b))
     (on :completed
         (swfw::complete-workflow-execution-decision :result (swfw::activity-result)))
     (on (:timed-out :canceled :failed)
         (swfw::fail-workflow-execution-decision :reason :spite))))
+
+
+(define-workflow adding-child ()
+    ((:version :2)))
+
 
 
 ;; (swf::with-service ()  (test :workflow-id :test6 :hei "du"))

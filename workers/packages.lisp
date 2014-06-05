@@ -40,6 +40,8 @@
    ;; new stuff
    #:on
    #:task
+   #:start-child-workflow
+   #:schedule-activity
    ))
 
 
