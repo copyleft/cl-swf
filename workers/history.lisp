@@ -512,7 +512,7 @@
 
 
 (defun run-task-events (handler)
-  (dolist (event (sort (slot-value *wx* 'task-events) #'< :key #'car))
+  (dolist (event (stable-sort (reverse (slot-value *wx* 'task-events)) #'< :key #'car))
     (destructuring-bind (event-name control event)
         (cdr event)
       (destructuring-bind (&key name args &allow-other-keys)
@@ -536,7 +536,7 @@
     (cause
      decision-task-completed-event-id
      marker-name)
-  (trigger 0 :record-marker-failed))
+  (trigger -1 :record-marker-failed))
 
 
 ;; Signal events -----------------------------------------------------------------------------------
@@ -547,7 +547,7 @@
      external-workflow-execution
      input
      signal-name)
-  (trigger 0 :signaled))
+  (trigger -10 :signaled))
 
 
 ;; Timer events ------------------------------------------------------------------------------------
@@ -564,13 +564,13 @@
     (cause
      decision-task-completed-event-id
      timer-id)
-  (trigger 0 :start-timer-failed))
+  (trigger -10 :start-timer-failed))
 
 
 (define-event timer-fired-event
     (started-event-id
      timer-id)
-  (trigger 0 :fired started-event-id))
+  (trigger -1 :fired started-event-id))
 
 
 (define-event timer-canceled-event
@@ -583,7 +583,7 @@
     (cause
      decision-task-completed-event-id
      timer-id)
-  (trigger 0 :cancel-timer-failed))
+  (trigger -10 :cancel-timer-failed))
 
 
 ;; Workflow events -------------------------------------------------------------------------
@@ -600,7 +600,7 @@
      task-list
      task-start-to-close-timeout
      workflow-type)
-  (trigger 0 :started))
+  (trigger -10 :started))
 
 
 (define-event complete-workflow-execution-failed-event
@@ -653,7 +653,7 @@
 (define-event continue-as-new-workflow-execution-failed-event
     (cause
      decision-task-completed-event-id)
-  (trigger 0 :continue-as-new-failed))
+  (trigger -10 :continue-as-new-failed))
 
 
 (define-event workflow-execution-cancel-requested-event
@@ -661,7 +661,7 @@
      external-initiated-event-id
      external-workflow-execution)
   (push id (slot-value *wx* 'canceled-requested-event-ids))
-  (trigger 0 :cancel-requested))
+  (trigger -2 :cancel-requested))
 
 
 ;; Decision events -------------------------------------------------------------------------
@@ -696,7 +696,7 @@
     (scheduled-event-id
      started-event-id
      timeout-type)
-  (trigger 0 :decision-task-timed-out))
+  (trigger -10 :decision-task-timed-out))
 
 
 ;; Activity events -------------------------------------------------------------------------
@@ -720,7 +720,7 @@
      activity-type
      cause
      decision-task-completed-event-id)
-  (trigger 0 :schedule-activity-task-failed))
+  (trigger -10 :schedule-activity-task-failed))
 
 
 (define-event activity-task-started-event
@@ -768,7 +768,7 @@
     (activity-id
      cause
      decision-task-completed-event-id)
-  (trigger 0 :request-cancel-activity-task-failed))
+  (trigger -10 :request-cancel-activity-task-failed))
 
 
 ;; Child workflow -------------------------------------------------------------------------
