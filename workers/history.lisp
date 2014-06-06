@@ -262,7 +262,7 @@
       (setf keyword-name (intern (string var) :keyword)))
     (unless supplied-p-parameter
       (setf supplied-p-parameter (gensym (format nil "~A-P-" var))))
-    `((,var ,keyword-name) ,init-form ,supplied-p-parameter)))
+    `((,keyword-name ,var) ,init-form ,supplied-p-parameter)))
 
 
 (defun normalize-optional-parameter (param)
@@ -311,7 +311,7 @@
          (all-vars (append vars
                            (mapcar #'car optionals)
                            (cdr rest)
-                           (mapcar #'caar keys)
+                           (mapcar #'cadar keys)
                            (mapcar #'car aux)))
          (normalized-lambda-list `(,@vars
                                    ,@(when optionals `(&optional ,@optionals))
@@ -325,7 +325,7 @@
                                    :append `(when ,supplied-p :collect ,var))
                            ,@(when rest `(:append ,rest-var))
                            ,@(unless rest
-                                     (loop :for ((var key) nil supplied-p) :in keys
+                                     (loop :for ((key var) nil supplied-p) :in keys
                                            :append `(when ,supplied-p :collect ,key :and :collect ,var)))
                            :while nil)))
     (values normalized-lambda-list

@@ -55,6 +55,9 @@
   (+ a b))
 
 
+
+
+
 (define-workflow test (&key hei)
     ((:version :2)
      (:default-execution-start-to-close-timeout (* 60 5))
@@ -64,7 +67,7 @@
       (adding-child 7 4))
   (on :start-timer-failed
       (swfw::fail-workflow-execution-decision))
-  (task addding-child (a b)
+  (task adding-child (a b)
       (start-child-workflow (adding-child :a a :b b))
     (on :completed
         (wait 5 :b (swfw::activity-result)))
@@ -91,8 +94,7 @@
         (swfw::fail-workflow-execution-decision :reason :spite))))
 
 
-(define-workflow adding-child ()
-    ((:version :2)))
+
 
 
 
