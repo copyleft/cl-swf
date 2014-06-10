@@ -329,8 +329,8 @@
                                            :append `(when ,supplied-p :collect ,key :and :collect ,var)))
                            :while nil)))
     (values normalized-lambda-list
-            all-vars
             args-list-form
+            all-vars
             vars
             optionals
             rest
@@ -345,7 +345,7 @@
   (destructuring-bind (task name (&rest args) init-form &body body)
       form
     (assert (eq 'task task))
-    (multiple-value-bind (normalized-lambda-list all-vars args-list-form)
+    (multiple-value-bind (normalized-lambda-list args-list-form all-vars)
         (parse-lambda-list args)
       (let ((kwname (if name
                         (intern (symbol-name name) :keyword)
@@ -405,12 +405,88 @@
                         :timer-id *task-id*))
 
 
-(defun start-child-workflow (dummy)
-  (declare (ignore dummy)))
+(defvar *workflow-starter* nil)
 
 
-(defun schedule-activity (dummy)
-  (declare (ignore dummy)))
+(defmacro start-child-workflow (form &body (&key child-policy
+                                                 execution-start-to-close-timeout
+                                                 tag-list
+                                                 task-list
+                                                 task-start-to-close-timeout))
+  (let ((workflow-type (gensym "WORKFLOW-TYPE"))
+        (args (gensym "ARGS")))
+    `(let ((*workflow-starter*
+            (lambda (,workflow-type ,args)
+              (start-child-workflow-execution-decision
+               :control *control*
+               :child-policy ,child-policy
+               :execution-start-to-close-timeout ,execution-start-to-close-timeout
+               :input ,args
+               :tag-list ,tag-list
+               :task-list ,task-list
+               :task-start-to-close-timeout ,task-start-to-close-timeout
+               :workflow-id *task-id*
+               :workflow-type ,workflow-type))))
+       ,form)))
+
+
+(defmacro start-workflow (form &body (&key child-policy
+                                           execution-start-to-close-timeout
+                                           tag-list
+                                           task-list
+                                           task-start-to-close-timeout
+                                           workflow-id))
+  (let ((workflow-type (gensym "WORKFLOW-TYPE"))
+        (args (gensym "ARGS")))
+    `(let ((*workflow-starter*
+            (lambda (,workflow-type ,args)
+              (swf::start-workflow-execution
+               :child-policy ,child-policy
+               :execution-start-to-close-timeout ,execution-start-to-close-timeout
+               :input (serialize-object ,args)
+               :tag-list ,tag-list
+               :task-list ,task-list
+               :task-start-to-close-timeout ,task-start-to-close-timeout
+               :workflow-id (serialize-slot :workflow-id (or ,workflow-id (task-type-name ,workflow-type)))
+               :workflow-type (serialize-slot :workflow-type ,workflow-type)))))
+       ,form)))
+
+
+(defun %start-workflow (workflow-type args)
+  (if *workflow-starter*
+      (funcall *workflow-starter* workflow-type args)
+      (error "Must wrap in START-WORKFLOW or START-CHILD-WORKFLOW")))
+
+
+(defvar *activity-scheduler* nil)
+
+(defmacro schedule-activity (form &body (&key heartbeat-timeout
+                                              schedule-to-close-timeout
+                                              schedule-to-start-timeout
+                                              start-to-close-timeout
+                                              task-list))
+  (let ((activity-type (gensym "ACTIVITY-TYPE"))
+        (args (gensym "ARGS")))
+    `(let ((*activity-scheduler*
+            (lambda (,activity-type ,args)
+              (schedule-activity-task-decision
+               :activity-id *task-id*
+               :activity-type ,activity-type
+               :control *control*
+               :heartbeat-timeout ,heartbeat-timeout
+               :input ,args
+               :schedule-to-close-timeout ,schedule-to-close-timeout
+               :schedule-to-start-timeout ,schedule-to-start-timeout
+               :start-to-close-timeout ,start-to-close-timeout
+               :task-list ,task-list))))
+       ,form)))
+
+
+(defun %schedule-activity (activity-type args)
+  (if *activity-scheduler*
+      (funcall *activity-scheduler* activity-type args)
+      (apply-activity-task-function activity-type args)))
+
 
 
 (defun request-cancel-external-workflow-execution (&key run-id workflow-id)
