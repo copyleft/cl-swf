@@ -412,7 +412,8 @@
                                                  execution-start-to-close-timeout
                                                  tag-list
                                                  task-list
-                                                 task-start-to-close-timeout))
+                                                 task-start-to-close-timeout
+                                                 workflow-id))
   (let ((workflow-type (gensym "WORKFLOW-TYPE"))
         (args (gensym "ARGS")))
     `(let ((*workflow-starter*
@@ -425,7 +426,7 @@
                :tag-list ,tag-list
                :task-list ,task-list
                :task-start-to-close-timeout ,task-start-to-close-timeout
-               :workflow-id *task-id*
+               :workflow-id (or ,workflow-id *task-id*)
                :workflow-type ,workflow-type))))
        ,form)))
 
