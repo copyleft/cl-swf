@@ -33,6 +33,7 @@
 (defclass workflow-execution ()
   ((run-id :initarg :run-id)
    (workflow-id :initarg :workflow-id)
+   (close-status :initform nil)
    (context :initform nil)
    (decisions :initform nil)
    (events :initarg :events)
@@ -91,6 +92,8 @@
 ;; Functions operating on current workflow execution (wx) and event  -------------------------------
 
 
+(defun close-status ()
+  (slot-value *wx* 'close-status))
 
 
 (defun new-events ()
@@ -510,7 +513,7 @@
 
 
 (defun get-marker (name)
-  (find name (slot-value *wx* 'markers) :key #'car))
+  (find name (slot-value *wx* 'markers) :key #'car :test #'equal))
 
 
 ;; Tasks -------------------------------------------------------------------------------------------
@@ -689,30 +692,35 @@
 
 (define-event workflow-execution-completed-event
     (decision-task-completed-event-id
-     result))
+     result)
+  (setf (slot-value *wx* 'close-status) :completed))
 
 
 (define-event workflow-execution-failed-event
     (decision-task-completed-event-id
      details
-     reason))
+     reason)
+  (setf (slot-value *wx* 'close-status) :failed))
 
 
 (define-event workflow-execution-timed-out-event
     (child-policy
-     timeout-type))
+     timeout-type)
+  (setf (slot-value *wx* 'close-status) :timed-out))
 
 
 (define-event workflow-execution-canceled-event
     (decision-task-completed-event-id
-     details))
+     details)
+  (setf (slot-value *wx* 'close-status) :canceled))
 
 
 (define-event workflow-execution-terminated-event
     (cause
      child-policy
      details
-     reason))
+     reason)
+  (setf (slot-value *wx* 'close-status) :terminated))
 
 
 (define-event workflow-execution-continued-as-new-event
@@ -724,7 +732,8 @@
      tag-list
      task-list
      task-start-to-close-timeout
-     workflow-type))
+     workflow-type)
+  (setf (slot-value *wx* 'close-status) :continued-as-new))
 
 
 (define-event continue-as-new-workflow-execution-failed-event
