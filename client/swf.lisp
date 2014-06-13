@@ -179,22 +179,12 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
                     :request-id (cdr (assoc :x-amzn-requestid headers :test #'equalp))))))))
 
 
-(defun credentials-from-file ()
-  (let (access-key secret)
-    (with-open-file (in (merge-pathnames ".aws" (user-homedir-pathname)))
-      (setf access-key (read-line in))
-      (setf secret (read-line in)))
-    (lambda ()
-      (values access-key secret))))
-
-
-
 (defvar *service*)
 
 
 (defun service (&key region credentials domain)
   (list :region (or region :eu-west-1)
-        :credentials (or credentials (credentials-from-file))
+        :credentials (or credentials *aws-credentials*)
         :domain (or domain "default")))
 
 
