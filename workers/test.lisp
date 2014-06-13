@@ -89,5 +89,30 @@
     (on (:timed-out :canceled :failed)
         (swfw::fail-workflow-execution-decision :reason :spite))))
 
-
 ;;(swf::with-service () (swfw::start-workflow (test :hei "du")))
+
+
+(define-workflow fail-test ()
+    ((:version :2)
+     (:default-execution-start-to-close-timeout (* 60 5))
+     (:default-task-start-to-close-timeout 60)
+     (:default-child-policy :terminate))
+  (on :started
+      (failing 21 3))
+  (task failing (q r)
+      (schedule-activity (failing (- q) (expt 2 r) q))
+    (on :completed
+        (swfw::complete-workflow (swfw::activity-result)))
+    (on (:failed :timed-out)
+        ;(break "~S ~S" q r)
+        (unless (swfw::reschedule-activty :retry 10000)
+          (swfw::fail-workflow-execution-decision :reason :giving-up)))))
+
+(define-activity failing (a b c)
+    ((:version :1))
+  (when (< 1 (random 1000))
+    (error "doesn't work"))
+  (list a b c))
+
+
+(swf::with-service () (swfw::start-workflow (fail-test)))

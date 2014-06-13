@@ -10,38 +10,13 @@
    #:complete-workflow
    #:cancel-workflow
    #:fail-workflow
-   ;; Test for task types
-   #:marker?
-   #:signal?
-   #:timer?
-   #:workflow?
-   #:decision?
-   #:activity?
-   #:child-workflow?
-   ;; Test for event types
-   #:recorded?
-   #:failed?
-   #:signaled?
-   #:started?
-   #:fired?
-   #:canceled?
-   #:cancel-failed?
-   #:completed?
-   #:timed-out?
-   #:terminated?
-   #:continued-as-new?
-   #:continue-as-new-failed?
-   #:cancel-requested?
-   #:scheduled?
-   #:schedule-failed?
-   #:request-cancel-failed?
-   #:initiated?
-   #:start-failed?
-   ;; new stuff
    #:on
    #:task
    #:start-child-workflow
    #:schedule-activity
+   #:reschedule-activity
+   #:activity-result
+   #:continue-as-new
    ))
 
 

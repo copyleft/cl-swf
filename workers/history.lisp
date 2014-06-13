@@ -157,6 +157,10 @@
   (complete-workflow-execution-decision :result result))
 
 
+(defun fail-workflow (reason &rest details)
+  (fail-workflow-execution-decision :reason reason :details details))
+
+
 (defun continue-as-new ()
   (with-slots (child-policy
                execution-start-to-close-timeout
@@ -206,11 +210,10 @@
                                          :signaled
                                          :decision-task-completed)))
                            (:timer '((:fired)))
-                           (:activity '((:completed)
-                                        (:canceled
-                                         :completed
+                           (:activity '((:completed
                                          :failed
-                                         :timed-out)))
+                                         :timed-out)
+                                        (:canceled)))
                            (:child-workflow '((:canceled
                                                :completed
                                                :failed
@@ -401,6 +404,8 @@
   (:method (task-type event-name)
     (log-error "Unhandled event: ~S ~S ~S" task-type event-name *event*)))
 
+;; TODO default handler for StartChildWorkflowExecutionFailedEvent
+
 
 (defun start-timer (start-to-fire-timeout)
   (start-timer-decision :start-to-fire-timeout start-to-fire-timeout
@@ -491,6 +496,26 @@
       (funcall *activity-scheduler* activity-type args)
       (apply-activity-task-function activity-type args)))
 
+
+(defun reschedule-activity (&key (retry 3))
+  (with-slots (scheduled-event-id)
+      *event*
+    (with-slots (activity-id activity-type control heartbeat-timeout input
+                             schedule-to-close-timeout schedule-to-start-timeout
+                             start-to-close-timeout task-list)
+        (get-event *wx* scheduled-event-id)
+      (incf (getf control :retry 0))
+      (when (< (getf control :retry) retry)
+        (schedule-activity-task-decision :activity-id activity-id
+                                         :activity-type activity-type
+                                         :control control
+                                         :heartbeat-timeout heartbeat-timeout
+                                         :input input
+                                         :schedule-to-close-timeout schedule-to-close-timeout
+                                         :schedule-to-start-timeout schedule-to-start-timeout
+                                         :start-to-close-timeout start-to-close-timeout
+                                         :task-list task-list)
+        t))))
 
 
 (defun request-cancel-external-workflow-execution (&key run-id workflow-id)
