@@ -350,6 +350,14 @@
 ;;; Handling activity tasks ------------------------------------------------------------------------
 
 
+(defvar *task-token*)
+
+(defun heartbeat (&optional details)
+  (getf (swf::record-activity-task-heartbeat :task-token *task-token*
+                                             :details (serialize-object details))
+        :cancel-requested))
+
+
 (define-condition activity-error (error)
   ((reason :initarg :reason
            :reader activity-error-reason)
@@ -392,7 +400,8 @@
 
 
 (defun compute-activity-task-value (task)
-  (let* ((activity-type (aget (%task-payload task) :activity-type))
+  (let* ((*task-token* (task-token task))
+         (activity-type (aget (%task-payload task) :activity-type))
          (activity (or (find-activity-type activity-type)
                        (error "Could not find activity type ~S." activity-type)))
          (input (deserialize-object (aget (%task-payload task) :input))))
