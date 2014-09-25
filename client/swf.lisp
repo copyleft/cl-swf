@@ -8,28 +8,18 @@ are string designators and the values are string. Returns three
 values, the result as a string, the http status code as an integer,
 and the reponse headers as an assoc list. Returns no values if the
 request times out."
-  ;; The connection-timeout parameter to http-request doesn't work in
-  ;; SBCL.  Wrapping the http request in with-timeout does work, but
-  ;; there is a risk that some cleanup forms will not be run, thus
-  ;; leaking file descriptors.  It's probably better to occasionally
-  ;; leak a file descriptor than to risk that this function blocks for
-  ;; ever.
-  (handler-case
-      (multiple-value-bind (result-octets status-code headers)
-          (sb-ext:with-timeout 600
-            (drakma:http-request uri
-                                 :method :post
-                                 :additional-headers (remove :content-type headers :key #'car :test #'equalp)
-                                 :content-type (cdr (assoc :content-type headers :test #'equalp))
-                                 :content (flex:string-to-octets payload :external-format :utf-8)
-                                 :force-binary t))
-        (values (if result-octets
-                    (flex:octets-to-string result-octets :external-format :utf-8)
-                    "")
-                status-code
-                headers))
-    (sb-ext:timeout ()
-      (error "http timeout"))))
+  (multiple-value-bind (result-octets status-code headers)
+      (drakma:http-request uri
+                           :method :post
+                           :additional-headers (remove :content-type headers :key #'car :test #'equalp)
+                           :content-type (cdr (assoc :content-type headers :test #'equalp))
+                           :content (flex:string-to-octets payload :external-format :utf-8)
+                           :force-binary t)
+    (values (if result-octets
+                (flex:octets-to-string result-octets :external-format :utf-8)
+                "")
+            status-code
+            headers)))
 
 
 (define-condition swf-error (error)
