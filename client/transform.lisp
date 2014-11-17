@@ -245,7 +245,7 @@
        ,@(when response
                `((define-swf-type ,response-type
                     ,@response)))
-       (defun ,name (&rest args &key (service *service*) ,@(when paged-slot '(all-pages)) ,@slots)
+       (defun ,name (&rest args &key (service *default-swf-service*) ,@(when paged-slot '(all-pages)) ,@slots)
          (declare (ignorable ,@(when paged-slot '(all-pages)) ,@slots))
          (,(if paged-slot 'typed-swf-action-paged 'typed-swf-action)
            service

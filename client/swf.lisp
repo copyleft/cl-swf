@@ -169,17 +169,7 @@ result JSON object or NIL. Might signal an error of subtype swf-error."
                     :request-id (cdr (assoc :x-amzn-requestid headers :test #'equalp))))))))
 
 
-(defvar *service*)
-
-
-(defun service (&key region credentials domain)
-  (list :region (or region :eu-west-1)
-        :credentials (or credentials *aws-credentials*)
-        :domain (or domain "default")))
-
-
-(defmacro with-service ((&key region credentials domain) &body body)
-  `(let ((*service* (service :region ,region
-                             :credentials ,credentials
-                             :domain ,domain)))
-     ,@body))
+(defvar *default-swf-service*
+  (list :region :eu-west-1
+        :credentials *aws-credentials*
+        :domain "default"))

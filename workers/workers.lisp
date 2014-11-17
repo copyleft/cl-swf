@@ -5,16 +5,15 @@
 ;; TODO: Check for duplicate workflow and activties types in a worker
 
 (defun find-workflow-execution (workflow-id)
-  (swf::with-service ()
-    (let* ((time-filter `((:oldest-date . ,(local-time:timestamp- (local-time:now) 1 :year))))
-           (execution-filter (serialize-slot :workflow-id workflow-id))
-           (executions (or (aget (swf::list-open-workflow-executions :start-time-filter time-filter
-                                                                    :execution-filter execution-filter)
-                                :execution-infos)
-                          (aget (swf::list-closed-workflow-executions :start-time-filter time-filter
-                                                                      :execution-filter execution-filter)
-                                :execution-infos))))
-      (deserialize-slot :workflow-execution (aget (car executions) :execution)))))
+  (let* ((time-filter `((:oldest-date . ,(local-time:timestamp- (local-time:now) 1 :year))))
+         (execution-filter (serialize-slot :workflow-id workflow-id))
+         (executions (or (aget (swf::list-open-workflow-executions :start-time-filter time-filter
+                                                                   :execution-filter execution-filter)
+                               :execution-infos)
+                         (aget (swf::list-closed-workflow-executions :start-time-filter time-filter
+                                                                     :execution-filter execution-filter)
+                               :execution-infos))))
+    (deserialize-slot :workflow-execution (aget (car executions) :execution))))
 
 
 ;;; Common worker ----------------------------------------------------------------------------------
@@ -25,7 +24,7 @@
 
 (defclass worker ()
   ((service :initarg :service
-            :initform (swf::service)
+            :initform swf::*default-swf-service*
             :reader worker-service)
    (task-list :initarg :task-list
               :initform "default"
