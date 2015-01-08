@@ -67,7 +67,8 @@
                         (with-simple-restart (continue "Log error and look for next task.")
                           (invoke-debugger error)))
                       (report-error error)
-                      (return-from worker-handle-next-task error)))))
+                      ;(return-from worker-handle-next-task error)
+                      ))))
     (let ((task (worker-look-for-task type)))
       (when task
         (with-log-context (task-workflow-id task)
