@@ -353,9 +353,10 @@
 (defvar *task-token*)
 
 (defun heartbeat (&optional details)
-  (getf (swf::record-activity-task-heartbeat :task-token *task-token*
-                                             :details (serialize-object details))
-        :cancel-requested))
+  (when (boundp '*task-token*)
+      (getf (swf::record-activity-task-heartbeat :task-token *task-token*
+                                                 :details (serialize-object details))
+            :cancel-requested)))
 
 
 (define-condition activity-error (error)
