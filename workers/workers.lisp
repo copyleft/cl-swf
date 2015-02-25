@@ -134,19 +134,19 @@
                  (when *enable-debugging*
                    (with-simple-restart (continue "Log error and retry.")
                      (invoke-debugger error)))
-                 (log-info "~S: An error occured while sending task reply, will retry after 15 seconds pause."
+                 (log-info "~S: An error occured while sending task reply, will retry after 5 seconds pause."
                            type)
                  (report-error error)
+                 (sleep 5)
                  (invoke-restart 'retry)))
-          (loop repeat 40 do
+          (loop repeat 24 do
                 (with-simple-restart (retry "Retry send task reponse")
                   (handler-bind ((swf::http-error #'do-retry)
                                  (swf::internal-failure-error #'do-retry)
                                  (swf::service-unavailable-error #'do-retry)
                                  (swf::throttling-error #'do-retry))
                     (apply function args)
-                    (return)))
-                (sleep 15))))
+                    (return))))))
     (terminate-workflow ()
       :report "Terminate this workflow execution."
       (swf::terminate-workflow-execution :details "Terminated by restart."
