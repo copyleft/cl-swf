@@ -44,39 +44,23 @@
 
 
 (defun worker-start (*worker* type)
-  (let ((swf::*service* (worker-service *worker*)))
+  (let ((swf::*default-swf-service* (worker-service *worker*)))
     (with-log-context type
-      (loop for error = (worker-handle-next-task type)
-            do (when error
-                 (set-worker-thread-status type "Pause due to error")
-                 (sleep 15))))))
-
-
-(defun worker-start-thread (worker type)
-  (sb-thread:make-thread (lambda (worker type)
-                           (worker-start worker type))
-                         :name (format nil "~A-WORKER: Init" type)
-                         :arguments (list worker type)))
+      (loop (with-simple-restart (continue "Continue worker loop")
+              (worker-handle-next-task type))))))
 
 
 (defun worker-handle-next-task (type)
   (handler-bind ((error
                   (lambda (error)
-                    (unless (typep error 'activity-error)
-                      (when *enable-debugging*
-                        (with-simple-restart (continue "Log error and look for next task.")
-                          (invoke-debugger error)))
-                      (report-error error)
-                      ;(return-from worker-handle-next-task error)
-                      ))))
+                    (report-error error))))
     (let ((task (worker-look-for-task type)))
       (when task
         (with-log-context (task-workflow-id task)
           (with-log-context (let ((ttype (or (aget (%task-payload task) :workflow-type)
                                              (aget (%task-payload task) :activity-type))))
                               (format nil "~A/~A" (aget ttype :name) (aget ttype :version)))
-            (worker-handle-task type task)
-            (values nil t)))))))
+            (worker-handle-task type task)))))))
 
 
 (defclass %task ()
@@ -132,11 +116,11 @@
         (set-worker-thread-status type "Sending response: ~S" function)
         (flet ((do-retry (error)
                  (when *enable-debugging*
-                   (with-simple-restart (continue "Log error and retry.")
+                   (with-simple-restart (continue "Continue as in production environment")
                      (invoke-debugger error)))
+                 (report-error error)
                  (log-info "~S: An error occured while sending task reply, will retry after 5 seconds pause."
                            type)
-                 (report-error error)
                  (sleep 5)
                  (invoke-restart 'retry)))
           (loop repeat 24 do
