@@ -9,12 +9,13 @@ values, the result as a string, the http status code as an integer,
 and the reponse headers as an assoc list. Returns no values if the
 request times out."
   (multiple-value-bind (result-octets status-code headers)
-      (drakma:http-request uri
-                           :method :post
-                           :additional-headers (remove :content-type headers :key #'car :test #'equalp)
-                           :content-type (cdr (assoc :content-type headers :test #'equalp))
-                           :content (flex:string-to-octets payload :external-format :utf-8)
-                           :force-binary t)
+      (sb-ext:with-timeout 120
+        (drakma:http-request uri
+                             :method :post
+                             :additional-headers (remove :content-type headers :key #'car :test #'equalp)
+                             :content-type (cdr (assoc :content-type headers :test #'equalp))
+                             :content (flex:string-to-octets payload :external-format :utf-8)
+                             :force-binary t))
     (values (if result-octets
                 (flex:octets-to-string result-octets :external-format :utf-8)
                 "")
