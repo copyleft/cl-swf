@@ -43,24 +43,19 @@
         (format nil "~A(~A): ~?" type (worker-task-list *worker*) format-control args)))
 
 
-(defun worker-start (*worker* type)
-  (let ((swf::*default-swf-service* (worker-service *worker*)))
-    (with-log-context type
-      (loop (with-simple-restart (continue "Continue worker loop")
-              (worker-handle-next-task type))))))
-
-
-(defun worker-handle-next-task (type)
-  (handler-bind ((error
-                  (lambda (error)
-                    (report-error error))))
-    (let ((task (worker-look-for-task type)))
-      (when task
-        (with-log-context (task-workflow-id task)
-          (with-log-context (let ((ttype (or (aget (%task-payload task) :workflow-type)
-                                             (aget (%task-payload task) :activity-type))))
-                              (format nil "~A/~A" (aget ttype :name) (aget ttype :version)))
-            (worker-handle-task type task)))))))
+(defun worker-handle-next-task (*worker* type)
+  (with-log-context type
+   (let ((swf::*default-swf-service* (worker-service *worker*)))
+     (handler-bind ((error
+                     (lambda (error)
+                       (report-error error))))
+       (let ((task (worker-look-for-task type)))
+         (when task
+           (with-log-context (task-workflow-id task)
+             (with-log-context (let ((ttype (or (aget (%task-payload task) :workflow-type)
+                                                (aget (%task-payload task) :activity-type))))
+                                 (format nil "~A/~A" (aget ttype :name) (aget ttype :version)))
+               (worker-handle-task type task)))))))))
 
 
 (defclass %task ()
