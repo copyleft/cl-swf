@@ -52,6 +52,7 @@
      input
      tag-list
      task-list
+     task-priority
      task-start-to-close-timeout
      workflow-type-version))
 
@@ -85,7 +86,8 @@
      schedule-to-close-timeout
      schedule-to-start-timeout
      start-to-close-timeout
-     task-list))
+     task-list
+     task-priority))
 
 
 (define-decision signal-external-workflow-execution
@@ -103,6 +105,7 @@
      input
      tag-list
      task-list
+     task-priority
      task-start-to-close-timeout
      workflow-id
      workflow-type))

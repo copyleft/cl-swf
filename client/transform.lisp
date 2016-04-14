@@ -180,6 +180,9 @@
          'timeout)
         ((ends-with "PeriodInDays" slot-name)
          'integer-as-string)
+        ((or (equal "taskPriority" slot-name)
+             (equal "DefaultTaskPriority" slot-name))
+         'integer-as-string)
         (t
          (let* ((arrayp (listp type-def))
                 (type-string (if arrayp (second type-def) type-def))

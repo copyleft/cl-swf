@@ -167,6 +167,7 @@
                input
                tag-list
                task-list
+               task-priority
                task-start-to-close-timeout
                workflow-type)
       (workflow-execution-started-event)
@@ -176,6 +177,7 @@
      :input input
      :tag-list tag-list
      :task-list task-list
+     :task-priority task-priority
      :task-start-to-close-timeout task-start-to-close-timeout
      :workflow-type-version (getf (task-type-options workflow-type) :version))))
 
@@ -420,6 +422,7 @@
                                                  execution-start-to-close-timeout
                                                  tag-list
                                                  task-list
+                                                 task-priority
                                                  task-start-to-close-timeout
                                                  workflow-id))
   (let ((workflow-type (gensym "WORKFLOW-TYPE"))
@@ -433,6 +436,7 @@
                :input ,args
                :tag-list ,tag-list
                :task-list ,task-list
+               :task-priority ,task-priority
                :task-start-to-close-timeout ,task-start-to-close-timeout
                :workflow-id (or ,workflow-id *task-id*)
                :workflow-type ,workflow-type))))
@@ -443,6 +447,7 @@
                                            execution-start-to-close-timeout
                                            tag-list
                                            task-list
+                                           task-priority
                                            task-start-to-close-timeout
                                            workflow-id))
   (let ((workflow-type (gensym "WORKFLOW-TYPE"))
@@ -455,6 +460,7 @@
                :input (serialize-object ,args)
                :tag-list ,tag-list
                :task-list ,task-list
+               :task-priority ,task-priority
                :task-start-to-close-timeout ,task-start-to-close-timeout
                :workflow-id (serialize-slot :workflow-id (or ,workflow-id (task-type-name ,workflow-type)))
                :workflow-type (serialize-slot :workflow-type ,workflow-type)))))
@@ -473,7 +479,8 @@
                                               schedule-to-close-timeout
                                               schedule-to-start-timeout
                                               start-to-close-timeout
-                                              task-list))
+                                              task-list
+                                              task-priority))
   (let ((activity-type (gensym "ACTIVITY-TYPE"))
         (args (gensym "ARGS")))
     `(let ((*activity-scheduler*
@@ -487,7 +494,8 @@
                :schedule-to-close-timeout ,schedule-to-close-timeout
                :schedule-to-start-timeout ,schedule-to-start-timeout
                :start-to-close-timeout ,start-to-close-timeout
-               :task-list ,task-list))))
+               :task-list ,task-list
+               :task-priority ,task-priority))))
        ,form)))
 
 
@@ -502,7 +510,7 @@
       *event*
     (with-slots (activity-id activity-type control heartbeat-timeout input
                              schedule-to-close-timeout schedule-to-start-timeout
-                             start-to-close-timeout task-list)
+                             start-to-close-timeout task-list task-priority)
         (get-event *wx* scheduled-event-id)
       (incf (getf control :retry 0))
       (when (< (getf control :retry) retry)
@@ -514,7 +522,8 @@
                                          :schedule-to-close-timeout schedule-to-close-timeout
                                          :schedule-to-start-timeout schedule-to-start-timeout
                                          :start-to-close-timeout start-to-close-timeout
-                                         :task-list task-list)
+                                         :task-list task-list
+                                         :task-priority task-priority)
         t))))
 
 
@@ -703,6 +712,7 @@
      parent-workflow-execution
      tag-list
      task-list
+     task-priority
      task-start-to-close-timeout
      workflow-type)
   (trigger -10 :started))
@@ -756,6 +766,7 @@
      new-execution-run-id
      tag-list
      task-list
+     task-priority
      task-start-to-close-timeout
      workflow-type)
   (setf (slot-value *wx* 'close-status) :continued-as-new))
@@ -787,7 +798,8 @@
 
 (define-event decision-task-scheduled-event
     (start-to-close-timeout
-     task-list))
+     task-list
+     task-priority))
 
 
 (define-event decision-task-started-event
@@ -823,7 +835,8 @@
      schedule-to-close-timeout
      schedule-to-start-timeout
      start-to-close-timeout
-     task-list))
+     task-list
+     task-priority))
 
 
 (define-event schedule-activity-task-failed-event
@@ -893,6 +906,7 @@
      input
      tag-list
      task-list
+     task-priority
      task-start-to-close-timeout
      workflow-id
      workflow-type))
