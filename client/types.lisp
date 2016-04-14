@@ -1,5 +1,5 @@
 
-(IN-PACKAGE :SWF) 
+(IN-PACKAGE :SWF)
 
 (DEFINE-SWF-TYPE "ActivityTask"
   ("activityId" :TYPE "String" :REQUIRED T)
@@ -7,28 +7,28 @@
   ("input" :TYPE "String" :REQUIRED NIL)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("taskToken" :TYPE "String" :REQUIRED T)
-  ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)) 
+  ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskCancelRequestedEventAttributes"
   ("activityId" :TYPE "String" :REQUIRED T)
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskCanceledEventAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
   ("latestCancelRequestedEventId" :TYPE "Long" :REQUIRED NIL)
   ("scheduledEventId" :TYPE "Long" :REQUIRED T)
-  ("startedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("startedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskCompletedEventAttributes"
   ("result" :TYPE "String" :REQUIRED NIL)
   ("scheduledEventId" :TYPE "Long" :REQUIRED T)
-  ("startedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("startedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskFailedEventAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
   ("reason" :TYPE "String" :REQUIRED NIL)
   ("scheduledEventId" :TYPE "Long" :REQUIRED T)
-  ("startedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("startedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskScheduledEventAttributes"
   ("activityId" :TYPE "String" :REQUIRED T)
@@ -40,36 +40,36 @@
   ("scheduleToCloseTimeout" :TYPE "String" :REQUIRED NIL)
   ("scheduleToStartTimeout" :TYPE "String" :REQUIRED NIL)
   ("startToCloseTimeout" :TYPE "String" :REQUIRED NIL)
-  ("taskList" :TYPE "TaskList" :REQUIRED T)) 
+  ("taskList" :TYPE "TaskList" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskStartedEventAttributes"
   ("identity" :TYPE "String" :REQUIRED NIL)
-  ("scheduledEventId" :TYPE "Long" :REQUIRED T)) 
+  ("scheduledEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskStatus"
-  ("cancelRequested" :TYPE "Boolean" :REQUIRED T)) 
+  ("cancelRequested" :TYPE "Boolean" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTaskTimedOutEventAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
   ("scheduledEventId" :TYPE "Long" :REQUIRED T)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("timeoutType" :TYPE "String" :REQUIRED T :VALID-VALUES
-   ("START_TO_CLOSE" "SCHEDULE_TO_START" "SCHEDULE_TO_CLOSE" "HEARTBEAT"))) 
+   ("START_TO_CLOSE" "SCHEDULE_TO_START" "SCHEDULE_TO_CLOSE" "HEARTBEAT")))
 
 (DEFINE-SWF-TYPE "ActivityType"
   ("name" :TYPE "String" :REQUIRED T)
-  ("version" :TYPE "String" :REQUIRED T)) 
+  ("version" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTypeConfiguration"
   ("defaultTaskHeartbeatTimeout" :TYPE "String" :REQUIRED NIL)
   ("defaultTaskList" :TYPE "TaskList" :REQUIRED NIL)
   ("defaultTaskScheduleToCloseTimeout" :TYPE "String" :REQUIRED NIL)
   ("defaultTaskScheduleToStartTimeout" :TYPE "String" :REQUIRED NIL)
-  ("defaultTaskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)) 
+  ("defaultTaskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "ActivityTypeDetail"
   ("configuration" :TYPE "ActivityTypeConfiguration" :REQUIRED T)
-  ("typeInfo" :TYPE "ActivityTypeInfo" :REQUIRED T)) 
+  ("typeInfo" :TYPE "ActivityTypeInfo" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ActivityTypeInfo"
   ("activityType" :TYPE "ActivityType" :REQUIRED T)
@@ -77,42 +77,42 @@
   ("deprecationDate" :TYPE "DateTime" :REQUIRED NIL)
   ("description" :TYPE "String" :REQUIRED NIL)
   ("status" :TYPE "String" :REQUIRED T :VALID-VALUES
-   ("REGISTERED" "DEPRECATED"))) 
+   ("REGISTERED" "DEPRECATED")))
 
 (DEFINE-SWF-TYPE "ActivityTypeInfos"
   ("nextPageToken" :TYPE "String" :REQUIRED NIL)
-  ("typeInfos" :TYPE (:ARRAY-OF "ActivityTypeInfo") :REQUIRED T)) 
+  ("typeInfos" :TYPE (:ARRAY-OF "ActivityTypeInfo") :REQUIRED T))
 
 (DEFINE-SWF-TYPE "CancelTimerDecisionAttributes"
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "CancelTimerFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("TIMER_ID_UNKNOWN" "OPERATION_NOT_PERMITTED"))
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "CancelWorkflowExecutionDecisionAttributes"
-  ("details" :TYPE "String" :REQUIRED NIL)) 
+  ("details" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "CancelWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("UNHANDLED_DECISION" "OPERATION_NOT_PERMITTED"))
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ChildWorkflowExecutionCanceledEventAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ChildWorkflowExecutionCompletedEventAttributes"
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("result" :TYPE "String" :REQUIRED NIL)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ChildWorkflowExecutionFailedEventAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
@@ -120,38 +120,38 @@
   ("reason" :TYPE "String" :REQUIRED NIL)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ChildWorkflowExecutionStartedEventAttributes"
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ChildWorkflowExecutionTerminatedEventAttributes"
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ChildWorkflowExecutionTimedOutEventAttributes"
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("timeoutType" :TYPE "String" :REQUIRED T :VALID-VALUES ("START_TO_CLOSE"))
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "CloseStatusFilter"
   ("status" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("COMPLETED" "FAILED" "CANCELED" "TERMINATED" "CONTINUED_AS_NEW"
-    "TIMED_OUT"))) 
+    "TIMED_OUT")))
 
 (DEFINE-SWF-TYPE "CompleteWorkflowExecutionDecisionAttributes"
-  ("result" :TYPE "String" :REQUIRED NIL)) 
+  ("result" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "CompleteWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("UNHANDLED_DECISION" "OPERATION_NOT_PERMITTED"))
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ContinueAsNewWorkflowExecutionDecisionAttributes"
   ("childPolicy" :TYPE "String" :REQUIRED NIL :VALID-VALUES
@@ -161,7 +161,7 @@
   ("tagList" :TYPE (:ARRAY-OF "Strings") :REQUIRED NIL)
   ("taskList" :TYPE "TaskList" :REQUIRED NIL)
   ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)
-  ("workflowTypeVersion" :TYPE "String" :REQUIRED NIL)) 
+  ("workflowTypeVersion" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "ContinueAsNewWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -171,7 +171,7 @@
     "DEFAULT_TASK_START_TO_CLOSE_TIMEOUT_UNDEFINED"
     "DEFAULT_TASK_LIST_UNDEFINED" "DEFAULT_CHILD_POLICY_UNDEFINED"
     "OPERATION_NOT_PERMITTED"))
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "Decision"
   ("cancelTimerDecisionAttributes" :TYPE "CancelTimerDecisionAttributes"
@@ -203,7 +203,7 @@
   ("startChildWorkflowExecutionDecisionAttributes" :TYPE
    "StartChildWorkflowExecutionDecisionAttributes" :REQUIRED NIL)
   ("startTimerDecisionAttributes" :TYPE "StartTimerDecisionAttributes"
-   :REQUIRED NIL)) 
+   :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "DecisionTask"
   ("events" :TYPE (:ARRAY-OF "HistoryEvent") :REQUIRED T)
@@ -212,67 +212,67 @@
   ("startedEventId" :TYPE "Long" :REQUIRED T)
   ("taskToken" :TYPE "String" :REQUIRED T)
   ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "DecisionTaskCompletedEventAttributes"
   ("executionContext" :TYPE "String" :REQUIRED NIL)
   ("scheduledEventId" :TYPE "Long" :REQUIRED T)
-  ("startedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("startedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "DecisionTaskScheduledEventAttributes"
   ("startToCloseTimeout" :TYPE "String" :REQUIRED NIL)
-  ("taskList" :TYPE "TaskList" :REQUIRED T)) 
+  ("taskList" :TYPE "TaskList" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "DecisionTaskStartedEventAttributes"
   ("identity" :TYPE "String" :REQUIRED NIL)
-  ("scheduledEventId" :TYPE "Long" :REQUIRED T)) 
+  ("scheduledEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "DecisionTaskTimedOutEventAttributes"
   ("scheduledEventId" :TYPE "Long" :REQUIRED T)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
-  ("timeoutType" :TYPE "String" :REQUIRED T :VALID-VALUES ("START_TO_CLOSE"))) 
+  ("timeoutType" :TYPE "String" :REQUIRED T :VALID-VALUES ("START_TO_CLOSE")))
 
 (DEFINE-SWF-TYPE "DomainConfiguration"
-  ("workflowExecutionRetentionPeriodInDays" :TYPE "String" :REQUIRED T)) 
+  ("workflowExecutionRetentionPeriodInDays" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "DomainDetail"
   ("configuration" :TYPE "DomainConfiguration" :REQUIRED T)
-  ("domainInfo" :TYPE "DomainInfo" :REQUIRED T)) 
+  ("domainInfo" :TYPE "DomainInfo" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "DomainInfo"
   ("description" :TYPE "String" :REQUIRED NIL)
   ("name" :TYPE "String" :REQUIRED T)
   ("status" :TYPE "String" :REQUIRED T :VALID-VALUES
-   ("REGISTERED" "DEPRECATED"))) 
+   ("REGISTERED" "DEPRECATED")))
 
 (DEFINE-SWF-TYPE "DomainInfos"
   ("domainInfos" :TYPE (:ARRAY-OF "DomainInfo") :REQUIRED T)
-  ("nextPageToken" :TYPE "String" :REQUIRED NIL)) 
+  ("nextPageToken" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "ExecutionTimeFilter"
   ("latestDate" :TYPE "DateTime" :REQUIRED NIL)
-  ("oldestDate" :TYPE "DateTime" :REQUIRED T)) 
+  ("oldestDate" :TYPE "DateTime" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ExternalWorkflowExecutionCancelRequestedEventAttributes"
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
-  ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)) 
+  ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "ExternalWorkflowExecutionSignaledEventAttributes"
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
-  ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T)) 
+  ("workflowExecution" :TYPE "WorkflowExecution" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "FailWorkflowExecutionDecisionAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
-  ("reason" :TYPE "String" :REQUIRED NIL)) 
+  ("reason" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "FailWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("UNHANDLED_DECISION" "OPERATION_NOT_PERMITTED"))
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "History"
   ("events" :TYPE (:ARRAY-OF "HistoryEvent") :REQUIRED T)
-  ("nextPageToken" :TYPE "String" :REQUIRED NIL)) 
+  ("nextPageToken" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "HistoryEvent"
   ("activityTaskCancelRequestedEventAttributes" :TYPE
@@ -393,39 +393,39 @@
   ("workflowExecutionTerminatedEventAttributes" :TYPE
    "WorkflowExecutionTerminatedEventAttributes" :REQUIRED NIL)
   ("workflowExecutionTimedOutEventAttributes" :TYPE
-   "WorkflowExecutionTimedOutEventAttributes" :REQUIRED NIL)) 
+   "WorkflowExecutionTimedOutEventAttributes" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "MarkerRecordedEventAttributes"
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("details" :TYPE "String" :REQUIRED NIL)
-  ("markerName" :TYPE "String" :REQUIRED T)) 
+  ("markerName" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "PendingTaskCount"
   ("count" :TYPE "Number" :REQUIRED T)
-  ("truncated" :TYPE "Boolean" :REQUIRED NIL)) 
+  ("truncated" :TYPE "Boolean" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "RecordMarkerDecisionAttributes"
   ("details" :TYPE "String" :REQUIRED NIL)
-  ("markerName" :TYPE "String" :REQUIRED T)) 
+  ("markerName" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "RecordMarkerFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES ("OPERATION_NOT_PERMITTED"))
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
-  ("markerName" :TYPE "String" :REQUIRED T)) 
+  ("markerName" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "RequestCancelActivityTaskDecisionAttributes"
-  ("activityId" :TYPE "String" :REQUIRED T)) 
+  ("activityId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "RequestCancelActivityTaskFailedEventAttributes"
   ("activityId" :TYPE "String" :REQUIRED T)
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("ACTIVITY_ID_UNKNOWN" "OPERATION_NOT_PERMITTED"))
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "RequestCancelExternalWorkflowExecutionDecisionAttributes"
   ("control" :TYPE "String" :REQUIRED NIL)
   ("runId" :TYPE "String" :REQUIRED NIL)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "RequestCancelExternalWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -436,16 +436,16 @@
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("runId" :TYPE "String" :REQUIRED NIL)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "RequestCancelExternalWorkflowExecutionInitiatedEventAttributes"
   ("control" :TYPE "String" :REQUIRED NIL)
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("runId" :TYPE "String" :REQUIRED NIL)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "Run"
-  ("runId" :TYPE "String" :REQUIRED NIL)) 
+  ("runId" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "ScheduleActivityTaskDecisionAttributes"
   ("activityId" :TYPE "String" :REQUIRED T)
@@ -456,7 +456,7 @@
   ("scheduleToCloseTimeout" :TYPE "String" :REQUIRED NIL)
   ("scheduleToStartTimeout" :TYPE "String" :REQUIRED NIL)
   ("startToCloseTimeout" :TYPE "String" :REQUIRED NIL)
-  ("taskList" :TYPE "TaskList" :REQUIRED NIL)) 
+  ("taskList" :TYPE "TaskList" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "ScheduleActivityTaskFailedEventAttributes"
   ("activityId" :TYPE "String" :REQUIRED T)
@@ -469,14 +469,14 @@
     "DEFAULT_SCHEDULE_TO_START_TIMEOUT_UNDEFINED"
     "DEFAULT_START_TO_CLOSE_TIMEOUT_UNDEFINED"
     "DEFAULT_HEARTBEAT_TIMEOUT_UNDEFINED" "OPERATION_NOT_PERMITTED"))
-  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)) 
+  ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "SignalExternalWorkflowExecutionDecisionAttributes"
   ("control" :TYPE "String" :REQUIRED NIL)
   ("input" :TYPE "String" :REQUIRED NIL)
   ("runId" :TYPE "String" :REQUIRED NIL)
   ("signalName" :TYPE "String" :REQUIRED T)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "SignalExternalWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -487,7 +487,7 @@
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("runId" :TYPE "String" :REQUIRED NIL)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "SignalExternalWorkflowExecutionInitiatedEventAttributes"
   ("control" :TYPE "String" :REQUIRED NIL)
@@ -495,7 +495,7 @@
   ("input" :TYPE "String" :REQUIRED NIL)
   ("runId" :TYPE "String" :REQUIRED NIL)
   ("signalName" :TYPE "String" :REQUIRED T)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "StartChildWorkflowExecutionDecisionAttributes"
   ("childPolicy" :TYPE "String" :REQUIRED NIL :VALID-VALUES
@@ -507,7 +507,7 @@
   ("taskList" :TYPE "TaskList" :REQUIRED NIL)
   ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)
   ("workflowId" :TYPE "String" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "StartChildWorkflowExecutionFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -522,7 +522,7 @@
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("initiatedEventId" :TYPE "Long" :REQUIRED T)
   ("workflowId" :TYPE "String" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "StartChildWorkflowExecutionInitiatedEventAttributes"
   ("childPolicy" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -535,64 +535,64 @@
   ("taskList" :TYPE "TaskList" :REQUIRED T)
   ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)
   ("workflowId" :TYPE "String" :REQUIRED T)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "StartTimerDecisionAttributes"
   ("control" :TYPE "String" :REQUIRED NIL)
   ("startToFireTimeout" :TYPE "String" :REQUIRED T)
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "StartTimerFailedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("TIMER_ID_ALREADY_IN_USE" "OPEN_TIMERS_LIMIT_EXCEEDED"
     "TIMER_CREATION_RATE_EXCEEDED" "OPERATION_NOT_PERMITTED"))
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "TagFilter"
-  ("tag" :TYPE "String" :REQUIRED T)) 
+  ("tag" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "TaskList"
-  ("name" :TYPE "String" :REQUIRED T)) 
+  ("name" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "TimerCanceledEventAttributes"
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("startedEventId" :TYPE "Long" :REQUIRED T)
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "TimerFiredEventAttributes"
   ("startedEventId" :TYPE "Long" :REQUIRED T)
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "TimerStartedEventAttributes"
   ("control" :TYPE "String" :REQUIRED NIL)
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("startToFireTimeout" :TYPE "String" :REQUIRED T)
-  ("timerId" :TYPE "String" :REQUIRED T)) 
+  ("timerId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecution"
   ("runId" :TYPE "String" :REQUIRED T)
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionCancelRequestedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED NIL :VALID-VALUES ("CHILD_POLICY_APPLIED"))
   ("externalInitiatedEventId" :TYPE "Long" :REQUIRED NIL)
-  ("externalWorkflowExecution" :TYPE "WorkflowExecution" :REQUIRED NIL)) 
+  ("externalWorkflowExecution" :TYPE "WorkflowExecution" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionCanceledEventAttributes"
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
-  ("details" :TYPE "String" :REQUIRED NIL)) 
+  ("details" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionCompletedEventAttributes"
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
-  ("result" :TYPE "String" :REQUIRED NIL)) 
+  ("result" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionConfiguration"
   ("childPolicy" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("TERMINATE" "REQUEST_CANCEL" "ABANDON"))
   ("executionStartToCloseTimeout" :TYPE "String" :REQUIRED T)
   ("taskList" :TYPE "TaskList" :REQUIRED T)
-  ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED T)) 
+  ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionContinuedAsNewEventAttributes"
   ("childPolicy" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -604,26 +604,26 @@
   ("tagList" :TYPE (:ARRAY-OF "Strings") :REQUIRED NIL)
   ("taskList" :TYPE "TaskList" :REQUIRED T)
   ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionCount"
   ("count" :TYPE "Number" :REQUIRED T)
-  ("truncated" :TYPE "Boolean" :REQUIRED NIL)) 
+  ("truncated" :TYPE "Boolean" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionDetail"
   ("executionConfiguration" :TYPE "WorkflowExecutionConfiguration" :REQUIRED T)
   ("executionInfo" :TYPE "WorkflowExecutionInfo" :REQUIRED T)
   ("latestActivityTaskTimestamp" :TYPE "DateTime" :REQUIRED NIL)
   ("latestExecutionContext" :TYPE "String" :REQUIRED NIL)
-  ("openCounts" :TYPE "WorkflowExecutionOpenCounts" :REQUIRED T)) 
+  ("openCounts" :TYPE "WorkflowExecutionOpenCounts" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionFailedEventAttributes"
   ("decisionTaskCompletedEventId" :TYPE "Long" :REQUIRED T)
   ("details" :TYPE "String" :REQUIRED NIL)
-  ("reason" :TYPE "String" :REQUIRED NIL)) 
+  ("reason" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionFilter"
-  ("workflowId" :TYPE "String" :REQUIRED T)) 
+  ("workflowId" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionInfo"
   ("cancelRequested" :TYPE "Boolean" :REQUIRED NIL)
@@ -636,23 +636,23 @@
   ("parent" :TYPE "WorkflowExecution" :REQUIRED NIL)
   ("startTimestamp" :TYPE "DateTime" :REQUIRED T)
   ("tagList" :TYPE (:ARRAY-OF "Strings") :REQUIRED NIL)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionInfos"
   ("executionInfos" :TYPE (:ARRAY-OF "WorkflowExecutionInfo") :REQUIRED T)
-  ("nextPageToken" :TYPE "String" :REQUIRED NIL)) 
+  ("nextPageToken" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionOpenCounts"
   ("openActivityTasks" :TYPE "Number" :REQUIRED T)
   ("openChildWorkflowExecutions" :TYPE "Number" :REQUIRED T)
   ("openDecisionTasks" :TYPE "Number" :REQUIRED T)
-  ("openTimers" :TYPE "Number" :REQUIRED T)) 
+  ("openTimers" :TYPE "Number" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionSignaledEventAttributes"
   ("externalInitiatedEventId" :TYPE "Long" :REQUIRED NIL)
   ("externalWorkflowExecution" :TYPE "WorkflowExecution" :REQUIRED NIL)
   ("input" :TYPE "String" :REQUIRED NIL)
-  ("signalName" :TYPE "String" :REQUIRED T)) 
+  ("signalName" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionStartedEventAttributes"
   ("childPolicy" :TYPE "String" :REQUIRED T :VALID-VALUES
@@ -665,7 +665,7 @@
   ("tagList" :TYPE (:ARRAY-OF "Strings") :REQUIRED NIL)
   ("taskList" :TYPE "TaskList" :REQUIRED T)
   ("taskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionTerminatedEventAttributes"
   ("cause" :TYPE "String" :REQUIRED NIL :VALID-VALUES
@@ -673,31 +673,31 @@
   ("childPolicy" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("TERMINATE" "REQUEST_CANCEL" "ABANDON"))
   ("details" :TYPE "String" :REQUIRED NIL)
-  ("reason" :TYPE "String" :REQUIRED NIL)) 
+  ("reason" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowExecutionTimedOutEventAttributes"
   ("childPolicy" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("TERMINATE" "REQUEST_CANCEL" "ABANDON"))
-  ("timeoutType" :TYPE "String" :REQUIRED T :VALID-VALUES ("START_TO_CLOSE"))) 
+  ("timeoutType" :TYPE "String" :REQUIRED T :VALID-VALUES ("START_TO_CLOSE")))
 
 (DEFINE-SWF-TYPE "WorkflowType"
   ("name" :TYPE "String" :REQUIRED T)
-  ("version" :TYPE "String" :REQUIRED T)) 
+  ("version" :TYPE "String" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowTypeConfiguration"
   ("defaultChildPolicy" :TYPE "String" :REQUIRED NIL :VALID-VALUES
    ("TERMINATE" "REQUEST_CANCEL" "ABANDON"))
   ("defaultExecutionStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)
   ("defaultTaskList" :TYPE "TaskList" :REQUIRED NIL)
-  ("defaultTaskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL)) 
+  ("defaultTaskStartToCloseTimeout" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowTypeDetail"
   ("configuration" :TYPE "WorkflowTypeConfiguration" :REQUIRED T)
-  ("typeInfo" :TYPE "WorkflowTypeInfo" :REQUIRED T)) 
+  ("typeInfo" :TYPE "WorkflowTypeInfo" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowTypeFilter"
   ("name" :TYPE "String" :REQUIRED T)
-  ("version" :TYPE "String" :REQUIRED NIL)) 
+  ("version" :TYPE "String" :REQUIRED NIL))
 
 (DEFINE-SWF-TYPE "WorkflowTypeInfo"
   ("creationDate" :TYPE "DateTime" :REQUIRED T)
@@ -705,8 +705,8 @@
   ("description" :TYPE "String" :REQUIRED NIL)
   ("status" :TYPE "String" :REQUIRED T :VALID-VALUES
    ("REGISTERED" "DEPRECATED"))
-  ("workflowType" :TYPE "WorkflowType" :REQUIRED T)) 
+  ("workflowType" :TYPE "WorkflowType" :REQUIRED T))
 
 (DEFINE-SWF-TYPE "WorkflowTypeInfos"
   ("nextPageToken" :TYPE "String" :REQUIRED NIL)
-  ("typeInfos" :TYPE (:ARRAY-OF "WorkflowTypeInfo") :REQUIRED T)) 
+  ("typeInfos" :TYPE (:ARRAY-OF "WorkflowTypeInfo") :REQUIRED T))
